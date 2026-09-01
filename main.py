@@ -65,7 +65,7 @@ def press_any_key():
 
 
 def log(msg):
-    print(f"[{time.strftime('%H:%M:%S')}] {msg}")
+    print(f"[{time.strftime('%H:%M:%S')}] {msg}", flush=True)
 
 
 def wait_for_window():
@@ -76,16 +76,16 @@ def wait_for_window():
             return rect
         now = time.time()
         if now - last_warn > 5:
-            print("Janela do jogo (titulo com 'DragonMine') nao encontrada. Abra o jogo...")
+            print("Janela do jogo (titulo com 'DragonMine') nao encontrada. Abra o jogo...", flush=True)
             last_warn = now
         time.sleep(1)
 
 
 def run(verbose=True, hold_time=KEY_HOLD_TIME, key_delay=KEY_PRESS_DELAY):
-    print("Bot iniciado. Localizando janela do jogo...")
-    print(f"Velocidade: hold={hold_time:.3f}s intervalo={key_delay:.3f}s")
+    print("Bot iniciado. Localizando janela do jogo...", flush=True)
+    print(f"Velocidade: hold={hold_time:.3f}s intervalo={key_delay:.3f}s", flush=True)
     wait_for_window()
-    print("Janela encontrada. Pressione Ctrl+C aqui no terminal para parar.")
+    print("Janela encontrada. Pressione Ctrl+C aqui no terminal para parar.", flush=True)
 
     with mss.mss() as sct:
         while True:

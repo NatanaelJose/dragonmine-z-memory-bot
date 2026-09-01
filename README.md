@@ -77,6 +77,51 @@ The runtime is a small state machine driven entirely by visual state:
 The capture and focus code uses Windows APIs, so other operating systems are
 not currently supported.
 
+## Desktop app
+
+Perfect Recall also includes a lightweight native Windows control panel built
+with Tauri 2. The desktop app keeps the proven Python/OpenCV detector, runs it
+as a hidden local process, and presents its status through a gamer-style HUD.
+
+The interface provides:
+
+- one-click start and stop controls;
+- dark and light themes saved between sessions;
+- `Fast`, `Safe`, and custom input timing profiles;
+- live detector state and runtime telemetry;
+- a color-coded view of the last memorized sequence;
+- fully local processing with no frame uploads.
+
+End users only need the generated Windows installer. Python, Node.js, and Rust
+are build-time dependencies and are not required after installation.
+
+### Desktop development
+
+Install the Python dependencies, including the desktop packager, then install
+the frontend packages:
+
+```powershell
+.\venv\Scripts\python.exe -m pip install -r requirements-dev.txt
+cd desktop
+npm install
+npm run tauri dev
+```
+
+The development app automatically finds `main.py` and the project `venv` in a
+parent directory. `DRAGONMINE_BOT_ROOT` can point it at another checkout.
+
+### Build the Windows installer
+
+From `desktop/`, run:
+
+```powershell
+npm run bundle
+```
+
+This command creates a self-contained Python vision runtime, embeds it as a
+Tauri resource, and produces an NSIS installer under
+`desktop/src-tauri/target/release/bundle/nsis/`.
+
 ## Installation
 
 Clone the repository and create a virtual environment:
