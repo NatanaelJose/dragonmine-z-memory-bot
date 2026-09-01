@@ -9,11 +9,18 @@ KEY_MAP = {
 }
 
 # Delay entre cada tecla enviada (segundos). Ajuste se o jogo nao registrar a tempo.
-# Perfil experimental rapido. O pynput envia eventos nativos, entao podemos
-# testar abaixo de um tick do jogo; direcoes repetidas sao o caso mais
-# importante para confirmar que press/release continuam sendo registrados.
-KEY_PRESS_DELAY = 0.03
-KEY_HOLD_TIME = 0.03
+# Perfis confirmados no jogo. 0.02/0.02 ja perde entradas; 0.03/0.03 e o
+# limite rapido observado. O usuario pode escolher o perfil pela CLI ou
+# informar valores personalizados sem editar este arquivo.
+SPEED_PROFILES = {
+    "fast": {"hold_time": 0.03, "key_delay": 0.03},
+    "safe": {"hold_time": 0.05, "key_delay": 0.05},
+}
+DEFAULT_SPEED_PROFILE = "fast"
+
+# Compatibilidade com as ferramentas que usam diretamente os valores padrao.
+KEY_HOLD_TIME = SPEED_PROFILES[DEFAULT_SPEED_PROFILE]["hold_time"]
+KEY_PRESS_DELAY = SPEED_PROFILES[DEFAULT_SPEED_PROFILE]["key_delay"]
 
 # Intervalo do polling de tela (segundos). Cada frame custa so ~10-15ms
 # para capturar + detectar, entao 0.05s (20 checagens/s) da folga e ainda

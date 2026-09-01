@@ -13,6 +13,7 @@ estado usa so a presenca/ausencia de simbolos coloridos na tela:
 
 Pare o bot a qualquer momento com Ctrl+C no terminal.
 """
+import argparse
 import time
 
 import mss
@@ -20,7 +21,14 @@ from pynput.keyboard import Controller, Key
 
 from arrow_detector import detect_arrows, is_prompt_screen
 from capture import grab_window
-from config import KEY_HOLD_TIME, KEY_MAP as KEY_NAME_MAP, KEY_PRESS_DELAY, POLL_INTERVAL
+from config import (
+    DEFAULT_SPEED_PROFILE,
+    KEY_HOLD_TIME,
+    KEY_MAP as KEY_NAME_MAP,
+    KEY_PRESS_DELAY,
+    POLL_INTERVAL,
+    SPEED_PROFILES,
+)
 from window import focus_game_window, get_window_rect
 
 PYNPUT_KEYS = {
@@ -34,7 +42,7 @@ KEY_MAP = {direction: PYNPUT_KEYS[key_name] for direction, key_name in KEY_NAME_
 keyboard = Controller()
 
 
-def press_sequence(directions):
+def press_sequence(directions, hold_time=KEY_HOLD_TIME, key_delay=KEY_PRESS_DELAY):
     log(f"Enviando sequencia: {directions}")
     started_at = time.perf_counter()
     for index, direction in enumerate(directions):
@@ -43,10 +51,10 @@ def press_sequence(directions):
             log(f"  ! direcao desconhecida: {direction}, pulando")
             continue
         keyboard.press(key)
-        time.sleep(KEY_HOLD_TIME)
+        time.sleep(hold_time)
         keyboard.release(key)
         if index < len(directions) - 1:
-            time.sleep(KEY_PRESS_DELAY)
+            time.sleep(key_delay)
     log(f"Sequencia enviada em {time.perf_counter() - started_at:.2f}s")
 
 
@@ -73,8 +81,9 @@ def wait_for_window():
         time.sleep(1)
 
 
-def run(verbose=True):
+def run(verbose=True, hold_time=KEY_HOLD_TIME, key_delay=KEY_PRESS_DELAY):
     print("Bot iniciado. Localizando janela do jogo...")
+    print(f"Velocidade: hold={hold_time:.3f}s intervalo={key_delay:.3f}s")
     wait_for_window()
     print("Janela encontrada. Pressione Ctrl+C aqui no terminal para parar.")
 
@@ -147,15 +156,36 @@ def run(verbose=True):
 
             log("Setas sumiram -- fase 'Repita!' comecou, enviando sequencia...")
             focus_game_window()
-            press_sequence(best_sequence)
+            press_sequence(best_sequence, hold_time, key_delay)
 
             # espera mais um pouco para nao reler a mesma tela de transicao
             # (ex: tela de resultado aparecendo) como se fosse novo memorize
             time.sleep(0.3)
 
 
+def parse_speed_args():
+    parser = argparse.ArgumentParser(description="Bot do minigame de memoria DragonMine Z")
+    parser.add_argument(
+        "--speed",
+        choices=sorted(SPEED_PROFILES),
+        default=DEFAULT_SPEED_PROFILE,
+        help=f"perfil de velocidade (padrao: {DEFAULT_SPEED_PROFILE})",
+    )
+    parser.add_argument("--hold-time", type=float, help="tempo personalizado segurando cada tecla")
+    parser.add_argument("--key-delay", type=float, help="intervalo personalizado entre teclas")
+    args = parser.parse_args()
+
+    profile = SPEED_PROFILES[args.speed]
+    hold_time = args.hold_time if args.hold_time is not None else profile["hold_time"]
+    key_delay = args.key_delay if args.key_delay is not None else profile["key_delay"]
+    if hold_time <= 0 or key_delay < 0:
+        parser.error("--hold-time deve ser > 0 e --key-delay deve ser >= 0")
+    return hold_time, key_delay
+
+
 if __name__ == "__main__":
     try:
-        run()
+        selected_hold, selected_delay = parse_speed_args()
+        run(hold_time=selected_hold, key_delay=selected_delay)
     except KeyboardInterrupt:
         print("\nBot encerrado.")

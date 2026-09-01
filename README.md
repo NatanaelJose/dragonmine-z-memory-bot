@@ -102,6 +102,36 @@ python -m venv venv
 The bot waits until it finds the game window. Stop it at any time with
 `Ctrl+C` in the terminal.
 
+### Input speed
+
+The default `fast` profile is the fastest timing confirmed reliable during
+real gameplay:
+
+```powershell
+.\venv\Scripts\python.exe main.py --speed fast
+```
+
+Use `safe` if a machine or game instance occasionally misses inputs:
+
+```powershell
+.\venv\Scripts\python.exe main.py --speed safe
+```
+
+| Profile | Key hold | Delay between keys | Status |
+| --- | ---: | ---: | --- |
+| `fast` | 0.03 s | 0.03 s | Default; tested successfully |
+| `safe` | 0.05 s | 0.05 s | More timing margin |
+
+Advanced users can override either value directly:
+
+```powershell
+.\venv\Scripts\python.exe main.py --hold-time 0.04 --key-delay 0.04
+```
+
+Values of `0.02/0.02` were tested and dropped inputs, so they are not provided
+as a built-in profile. The selected timing is printed when the bot starts, and
+the measured send duration is logged after each sequence.
+
 ## Live detector
 
 Use the live overlay before changing detection thresholds or when a new visual
@@ -170,8 +200,8 @@ Runtime timing and key bindings live in `config.py`:
 | Setting | Purpose |
 | --- | --- |
 | `KEY_MAP` | Maps detected directions to keyboard directions |
-| `KEY_PRESS_DELAY` | Delay between consecutive inputs |
-| `KEY_HOLD_TIME` | How long each key remains pressed |
+| `SPEED_PROFILES` | Named key-hold and inter-key timing profiles |
+| `DEFAULT_SPEED_PROFILE` | Profile used when `--speed` is omitted |
 | `POLL_INTERVAL` | Delay between visual checks |
 
 Vision thresholds live in `arrow_detector.py`:
