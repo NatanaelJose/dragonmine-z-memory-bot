@@ -4,8 +4,9 @@ import { listen } from "@tauri-apps/api/event";
 import "./App.css";
 
 type Speed = "fast" | "safe" | "custom";
+type GameMode = "memory" | "rhythm";
 type Direction = "up" | "down" | "left" | "right";
-type Phase = "offline" | "searching" | "armed" | "memorizing" | "sending";
+type Phase = "offline" | "searching" | "armed" | "memorizing" | "sending" | "tracking";
 type Theme = "light" | "dark";
 
 interface ProcessStatus {
@@ -34,6 +35,12 @@ const phaseCopy: Record<Phase, { eyebrow: string; title: string; detail: string 
   armed: { eyebrow: "LINK STABLE", title: "Ready for the next round", detail: "The detector is watching for a valid color sequence." },
   memorizing: { eyebrow: "SEQUENCE LOCKED", title: "Pattern memorized", detail: "Waiting for the symbols to clear before sending input." },
   sending: { eyebrow: "INPUT BURST", title: "Replaying sequence", detail: "Native arrow-key events are being sent to the game." },
+  tracking: { eyebrow: "RHYTHM LINK LIVE", title: "Tracking both receptors", detail: "Tap notes and sustains are being timed against the center lines." },
+};
+
+const gameCopy: Record<GameMode, { label: string; kicker: string; description: string }> = {
+  memory: { label: "Perfect Recall", kicker: "MEMORY CORE", description: "Detect, memorize, and replay color sequences." },
+  rhythm: { label: "Rhythm Drive", kicker: "RHYTHM CORE", description: "Track, tap, and hold incoming notes automatically." },
 };
 
 const arrows: Record<Direction, string> = {
@@ -54,6 +61,9 @@ function parseSequence(line: string): Direction[] | null {
 }
 
 function phaseFromLog(line: string, current: Phase): Phase {
+  if (line.includes("RHYTHM:TRACKING") || line.includes("RHYTHM:HIT") || line.includes("RHYTHM:HOLD")) return "tracking";
+  if (line.includes("RHYTHM:READY") || line.includes("RHYTHM:START")) return "armed";
+  if (line.includes("RHYTHM:WAITING")) return "searching";
   if (line.includes("MEMORIZE detectado")) return "memorizing";
   if (line.includes("enviando sequencia") || line.includes("Enviando sequencia")) return "sending";
   if (line.includes("Sequencia enviada")) return "armed";
@@ -74,6 +84,7 @@ function App() {
   const [running, setRunning] = useState(false);
   const [busy, setBusy] = useState(false);
   const [phase, setPhase] = useState<Phase>("offline");
+  const [game, setGame] = useState<GameMode>(() => localStorage.getItem("game") === "rhythm" ? "rhythm" : "memory");
   const [speed, setSpeed] = useState<Speed>(() => (localStorage.getItem("speed") as Speed) || "fast");
   const [holdTime, setHoldTime] = useState(0.04);
   const [keyDelay, setKeyDelay] = useState(0.04);
@@ -95,6 +106,10 @@ function App() {
   useEffect(() => {
     localStorage.setItem("speed", speed);
   }, [speed]);
+
+  useEffect(() => {
+    localStorage.setItem("game", game);
+  }, [game]);
 
   useEffect(() => {
     if (!isTauri()) return;
@@ -154,6 +169,7 @@ function App() {
         setPhase("offline");
       } else {
         const status = await invoke<ProcessStatus>("start_bot", {
+          game,
           speed,
           holdTime: speed === "custom" ? timing.holdTime : null,
           keyDelay: speed === "custom" ? timing.keyDelay : null,
@@ -170,7 +186,18 @@ function App() {
     }
   }
 
-  const phaseInfo = phaseCopy[phase];
+  function selectGame(mode: GameMode) {
+    if (running) return;
+    setGame(mode);
+    setPhase("offline");
+    setLogs([]);
+    setSequence([]);
+  }
+
+  const isRhythm = game === "rhythm";
+  const phaseInfo = phase === "offline" && isRhythm
+    ? { eyebrow: "RHYTHM CORE IDLE", title: "Autoplay standing by", detail: "Open the rhythm minigame and initialize while the start prompt is visible." }
+    : phaseCopy[phase];
 
   return (
     <main className="app-shell">
@@ -193,6 +220,22 @@ function App() {
         </div>
       </header>
 
+      <nav className="game-switcher" aria-label="Game mode">
+        {(Object.keys(gameCopy) as GameMode[]).map((mode) => (
+          <button
+            key={mode}
+            className={game === mode ? "is-selected" : ""}
+            onClick={() => selectGame(mode)}
+            disabled={running}
+            aria-pressed={game === mode}
+          >
+            <small>{gameCopy[mode].kicker}</small>
+            <strong>{gameCopy[mode].label}</strong>
+            <span>{gameCopy[mode].description}</span>
+          </button>
+        ))}
+      </nav>
+
       <section className="command-deck">
         <div className="status-stage">
           <div className={`scanner ${running ? "is-active" : ""}`} aria-hidden="true">
@@ -210,7 +253,7 @@ function App() {
             <span className="power-symbol" aria-hidden="true" />
             <span>
               <small>{busy ? "PROCESSING" : running ? "END SESSION" : "INITIALIZE"}</small>
-              {busy ? "Please wait" : running ? "Stop bot" : "Start bot"}
+              {busy ? "Please wait" : running ? "Stop bot" : isRhythm ? "Start rhythm bot" : "Start bot"}
             </span>
           </button>
         </div>
@@ -218,11 +261,26 @@ function App() {
         <div className="sequence-panel">
           <div className="section-heading">
             <div>
-              <p className="overline">MEMORY BUFFER</p>
-              <h3>Last sequence</h3>
+              <p className="overline">{isRhythm ? "DUAL LANE TRACKER" : "MEMORY BUFFER"}</p>
+              <h3>{isRhythm ? "Live hit geometry" : "Last sequence"}</h3>
             </div>
-            <span className="sequence-count">{String(sequence.length).padStart(2, "0")} INPUTS</span>
+            <span className="sequence-count">{isRhythm ? "TAP + HOLD" : `${String(sequence.length).padStart(2, "0")} INPUTS`}</span>
           </div>
+          {isRhythm ? (
+            <div className="rhythm-target">
+              <div className="lane-visual" aria-hidden="true">
+                <span className="note note-left">←</span>
+                <span className="hit-line line-left" />
+                <span className="lane-core">PR</span>
+                <span className="hit-line line-right" />
+                <span className="note note-up">↑</span>
+              </div>
+              <div className="capture-result">
+                <strong>Center-line prediction</strong>
+                <span>Color identifies direction; motion controls key-down and key-up timing.</span>
+              </div>
+            </div>
+          ) : (
           <div className={`sequence-track ${sequence.length ? "has-data" : ""}`}>
             {sequence.length ? sequence.map((direction, index) => (
               <div className={`direction direction-${direction}`} key={`${direction}-${index}`} style={{ "--index": index } as React.CSSProperties}>
@@ -236,10 +294,27 @@ function App() {
               </div>
             )}
           </div>
+          )}
         </div>
       </section>
 
       <section className="lower-deck">
+        {isRhythm ? (
+        <div className="capture-protocol">
+          <div className="section-heading">
+            <div>
+              <p className="overline">AUTOPLAY PROTOCOL</p>
+              <h3>Before initialization</h3>
+            </div>
+            <span className="timing-readout">LIVE</span>
+          </div>
+          <ol className="protocol-list">
+            <li><span>01</span><div><strong>Open Rhythm</strong><small>Leave the green start prompt visible.</small></div></li>
+            <li><span>02</span><div><strong>Initialize the core</strong><small>The app focuses DragonMine and starts the song.</small></div></li>
+            <li><span>03</span><div><strong>Do not move the window</strong><small>The detector taps and holds all four arrow keys.</small></div></li>
+          </ol>
+        </div>
+        ) : (
         <div className="speed-control">
           <div className="section-heading">
             <div>
@@ -268,6 +343,7 @@ function App() {
             </label>
           </div>
         </div>
+        )}
 
         <div className="telemetry">
           <div className="section-heading">
@@ -297,7 +373,7 @@ function App() {
       )}
 
       <footer>
-        <span>PERFECT RECALL // v0.1.1</span>
+        <span>PERFECT RECALL // v0.2.0</span>
         <span>LOCAL PROCESSING · NO FRAME UPLOAD</span>
       </footer>
     </main>

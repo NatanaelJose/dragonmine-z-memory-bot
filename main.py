@@ -29,6 +29,8 @@ from config import (
     POLL_INTERVAL,
     SPEED_PROFILES,
 )
+from rhythm_capture import DEFAULT_DURATION, DEFAULT_FPS, record_rhythm_session
+from rhythm_bot import run_rhythm
 from window import focus_game_window, get_window_rect
 
 PYNPUT_KEYS = {
@@ -163,8 +165,14 @@ def run(verbose=True, hold_time=KEY_HOLD_TIME, key_delay=KEY_PRESS_DELAY):
             time.sleep(0.3)
 
 
-def parse_speed_args():
+def parse_args():
     parser = argparse.ArgumentParser(description="Bot do minigame de memoria DragonMine Z")
+    parser.add_argument(
+        "--game",
+        choices=("memory", "rhythm", "rhythm-capture"),
+        default="memory",
+        help="modo executado pelo controlador desktop",
+    )
     parser.add_argument(
         "--speed",
         choices=sorted(SPEED_PROFILES),
@@ -173,6 +181,24 @@ def parse_speed_args():
     )
     parser.add_argument("--hold-time", type=float, help="tempo personalizado segurando cada tecla")
     parser.add_argument("--key-delay", type=float, help="intervalo personalizado entre teclas")
+    parser.add_argument(
+        "--capture-duration",
+        type=float,
+        default=DEFAULT_DURATION,
+        help="duracao da amostra do modo ritmo em segundos",
+    )
+    parser.add_argument(
+        "--capture-fps",
+        type=float,
+        default=DEFAULT_FPS,
+        help="FPS alvo da amostra do modo ritmo",
+    )
+    parser.add_argument(
+        "--rhythm-lead-ms",
+        type=float,
+        default=8.0,
+        help="antecipacao do input de ritmo em milissegundos",
+    )
     args = parser.parse_args()
 
     profile = SPEED_PROFILES[args.speed]
@@ -180,12 +206,19 @@ def parse_speed_args():
     key_delay = args.key_delay if args.key_delay is not None else profile["key_delay"]
     if hold_time <= 0 or key_delay < 0:
         parser.error("--hold-time deve ser > 0 e --key-delay deve ser >= 0")
-    return hold_time, key_delay
+    if not -50 <= args.rhythm_lead_ms <= 100:
+        parser.error("--rhythm-lead-ms deve ficar entre -50 e 100")
+    return args, hold_time, key_delay
 
 
 if __name__ == "__main__":
     try:
-        selected_hold, selected_delay = parse_speed_args()
-        run(hold_time=selected_hold, key_delay=selected_delay)
+        selected_args, selected_hold, selected_delay = parse_args()
+        if selected_args.game == "rhythm-capture":
+            record_rhythm_session(selected_args.capture_duration, selected_args.capture_fps)
+        elif selected_args.game == "rhythm":
+            run_rhythm(selected_args.rhythm_lead_ms)
+        else:
+            run(hold_time=selected_hold, key_delay=selected_delay)
     except KeyboardInterrupt:
         print("\nBot encerrado.")

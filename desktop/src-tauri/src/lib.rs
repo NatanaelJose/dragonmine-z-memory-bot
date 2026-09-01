@@ -10,7 +10,23 @@ use tauri::{AppHandle, Emitter, Manager, State};
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
 
+#[cfg(target_os = "windows")]
+unsafe extern "system" {
+    fn keybd_event(virtual_key: u8, scan_code: u8, flags: u32, extra_info: usize);
+}
+
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+#[cfg(target_os = "windows")]
+const KEYEVENTF_KEYUP: u32 = 0x0002;
+
+fn release_arrow_keys() {
+    #[cfg(target_os = "windows")]
+    for virtual_key in [0x25_u8, 0x26, 0x27, 0x28] {
+        // Safety: keybd_event is a stateless Win32 input call. Sending KEYUP
+        // for all arrows prevents a sustain from sticking if Python is killed.
+        unsafe { keybd_event(virtual_key, 0, KEYEVENTF_KEYUP, 0) };
+    }
+}
 
 struct BotProcess {
     child: Mutex<Option<Child>>,
@@ -61,6 +77,23 @@ enum BotRuntime {
 }
 
 fn resolve_runtime(app: &AppHandle) -> Result<BotRuntime, String> {
+    // During `tauri dev`, always prefer the live Python sources. A previously
+    // packaged executable may be present in target/debug/resources and would
+    // otherwise hide recorder changes until PyInstaller is rebuilt.
+    #[cfg(debug_assertions)]
+    if let Ok(root) = std::env::var_os("DRAGONMINE_BOT_ROOT")
+        .map(PathBuf::from)
+        .map_or_else(find_bot_root, Ok)
+    {
+        if contains_bot(&root) {
+            return Ok(BotRuntime::Development {
+                python: root.join("venv").join("Scripts").join("python.exe"),
+                script: root.join("main.py"),
+                working_dir: root,
+            });
+        }
+    }
+
     if let Ok(resource_dir) = app.path().resource_dir() {
         let executable = resource_dir.join("binaries").join("dragonmine-bot.exe");
         if executable.is_file() {
@@ -84,10 +117,28 @@ fn resolve_runtime(app: &AppHandle) -> Result<BotRuntime, String> {
     })
 }
 
-fn emit_lines<R: std::io::Read + Send + 'static>(reader: R, stream: &'static str, app: AppHandle) {
+fn restore_main_window(app: &AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.unminimize();
+        let _ = window.set_focus();
+    }
+}
+
+fn emit_lines<R: std::io::Read + Send + 'static>(
+    reader: R,
+    stream: &'static str,
+    app: AppHandle,
+    restore_when_done: bool,
+) {
     std::thread::spawn(move || {
         for line in BufReader::new(reader).lines().map_while(Result::ok) {
+            if restore_when_done && line.contains("RHYTHM_CAPTURE:SAVED") {
+                restore_main_window(&app);
+            }
             let _ = app.emit("bot-log", LogEvent { stream, line });
+        }
+        if restore_when_done {
+            restore_main_window(&app);
         }
     });
 }
@@ -100,6 +151,7 @@ fn refresh_child(state: &BotProcess) -> Result<bool, String> {
     if let Some(child) = guard.as_mut() {
         match child.try_wait().map_err(|error| error.to_string())? {
             Some(_) => {
+                release_arrow_keys();
                 *guard = None;
                 Ok(false)
             }
@@ -121,12 +173,16 @@ fn get_bot_status(state: State<'_, BotProcess>) -> Result<ProcessStatus, String>
 fn start_bot(
     app: AppHandle,
     state: State<'_, BotProcess>,
+    game: String,
     speed: String,
     hold_time: Option<f64>,
     key_delay: Option<f64>,
 ) -> Result<ProcessStatus, String> {
     if refresh_child(&state)? {
         return Err("The bot is already running.".into());
+    }
+    if !matches!(game.as_str(), "memory" | "rhythm" | "rhythm-capture") {
+        return Err("Unknown game mode.".into());
     }
     if !matches!(speed.as_str(), "fast" | "safe" | "custom") {
         return Err("Unknown speed profile.".into());
@@ -159,6 +215,8 @@ fn start_bot(
     };
     command
         .env("PYTHONUNBUFFERED", "1")
+        .arg("--game")
+        .arg(&game)
         .arg("--speed")
         .arg(if speed == "custom" { "fast" } else { &speed })
         .stdout(Stdio::piped())
@@ -179,16 +237,21 @@ fn start_bot(
         .spawn()
         .map_err(|error| format!("Failed to start bot: {error}"))?;
     if let Some(stdout) = child.stdout.take() {
-        emit_lines(stdout, "stdout", app.clone());
+        emit_lines(stdout, "stdout", app.clone(), game == "rhythm-capture");
     }
     if let Some(stderr) = child.stderr.take() {
-        emit_lines(stderr, "stderr", app);
+        emit_lines(stderr, "stderr", app.clone(), false);
     }
 
     *state
         .child
         .lock()
         .map_err(|_| "Bot process lock is poisoned")? = Some(child);
+    if game == "rhythm-capture" {
+        if let Some(window) = app.get_webview_window("main") {
+            let _ = window.minimize();
+        }
+    }
     Ok(ProcessStatus { running: true })
 }
 
@@ -199,6 +262,7 @@ fn stop_bot(state: State<'_, BotProcess>) -> Result<ProcessStatus, String> {
         .lock()
         .map_err(|_| "Bot process lock is poisoned")?;
     if let Some(child) = guard.as_mut() {
+        release_arrow_keys();
         child
             .kill()
             .map_err(|error| format!("Failed to stop bot: {error}"))?;
@@ -224,6 +288,7 @@ pub fn run() {
                 let state = window.state::<BotProcess>();
                 if let Ok(mut guard) = state.child.lock() {
                     if let Some(child) = guard.as_mut() {
+                        release_arrow_keys();
                         let _ = child.kill();
                     }
                     *guard = None;

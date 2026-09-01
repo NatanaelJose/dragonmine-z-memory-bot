@@ -1,10 +1,11 @@
 # DragonMine Z: Perfect Recall
 
-### A computer-vision autoplayer for the **Shadow Boxing** memory minigame
+### A lightweight computer-vision autoplayer for **Shadow Boxing and Rhythm**
 
-DragonMine Z: Perfect Recall watches the *Boxe Sombrio* (Shadow Boxing)
-minigame, memorizes its colored direction sequence, waits for the repeat
-phase, and sends the correct arrow-key inputs automatically.
+DragonMine Z: Perfect Recall automates two DragonMine Z minigames entirely on
+your computer. It memorizes and replays *Boxe Sombrio* (Shadow Boxing)
+sequences, and its **Rhythm Drive** tracks notes approaching from both sides,
+taps regular notes, and holds sustain notes until completion.
 
 The bot needs no manually calibrated screen region. It finds the DragonMine
 window, captures only its client area, scans the entire frame, and separates
@@ -24,6 +25,9 @@ the real symbols from HUD elements, titles, menus, and background noise.
 - Up to 32 symbols per sequence
 - Automatic start/end prompt handling
 - Native arrow-key input through `pynput`
+- Real-time two-sided rhythm-lane tracking
+- Predictive tap timing and key-down/key-up sustain control
+- Rhythm autoplay validated through level 76 in real gameplay
 - Live diagnostic overlay with accepted and rejected contour explanations
 - Synthetic regression tests for real bugs found during gameplay
 
@@ -90,6 +94,7 @@ The interface provides:
 - `Fast`, `Safe`, and custom input timing profiles;
 - live detector state and runtime telemetry;
 - a color-coded view of the last memorized sequence;
+- a dedicated **Rhythm Drive** mode for taps and sustains;
 - fully local processing with no frame uploads.
 
 End users only need the generated Windows installer. Python, Node.js, and Rust
@@ -121,6 +126,50 @@ npm run bundle
 This command creates a self-contained Python vision runtime, embeds it as a
 Tauri resource, and produces an NSIS installer under
 `desktop/src-tauri/target/release/bundle/nsis/`.
+
+### Rhythm Drive
+
+Select **Rhythm Drive**, open the rhythm minigame, leave its green start
+prompt visible, and choose **Start rhythm bot**. Perfect Recall focuses the
+DragonMine window, starts the song, and watches the narrow horizontal lane in
+real time.
+
+Direction is read from each note's fixed color. Motion determines which of the
+two receptors it is approaching. The tracker predicts the center crossing,
+sends a short arrow-key tap for regular notes, and keeps the key down for a
+sustain until its trail completes. Receptor coordinates are normalized to the
+game window, so the detector works across window sizes without a manual crop.
+
+The tuned default uses an 8 ms prediction lead and a narrow hit tolerance. It
+was validated in real gameplay through level 76. Keep the game window steady
+while Rhythm Drive is active.
+
+The rhythm bot can also be started directly:
+
+```powershell
+.\venv\Scripts\python.exe main.py --game rhythm
+```
+
+### Rhythm diagnostic capture
+
+Developers can still record a twelve-second timing sample without sending
+gameplay input:
+
+```powershell
+.\venv\Scripts\python.exe main.py --game rhythm-capture
+```
+
+Each session is saved under
+`Documents/DragonMine Perfect Recall/rhythm_captures/<timestamp>/` with:
+
+- `lane.avi` - the cropped horizontal note lane in MJPG format;
+- `timestamps.csv` - the measured time of every captured frame;
+- `reference.png` - one full game frame for locating the hit zones;
+- `metadata.json` - resolution, normalized crop, frame count, and measured FPS.
+
+For a useful diagnostic sample, include all four directions and at least one
+sustain note. The files remain local and are intended for offline detector and
+timing analysis.
 
 ## Installation
 
@@ -270,11 +319,12 @@ Every confirmed visual bug should become a regression test.
 Run the full offline regression suite after any detector change:
 
 ```powershell
-.\venv\Scripts\python.exe -m py_compile arrow_detector.py capture.py config.py debug_capture.py debug_live.py main.py window.py
+.\venv\Scripts\python.exe -m py_compile arrow_detector.py capture.py config.py debug_capture.py debug_live.py main.py rhythm_bot.py rhythm_capture.py rhythm_detector.py window.py
 .\venv\Scripts\python.exe test_detector.py
 .\venv\Scripts\python.exe test_noise.py
 .\venv\Scripts\python.exe test_prompt.py
 .\venv\Scripts\python.exe test_sanity.py
+.\venv\Scripts\python.exe -m unittest test_rhythm_detector.py
 ```
 
 The tests cover:
@@ -294,6 +344,9 @@ arrow_detector.py  Computer-vision pipeline and prompt detection
 capture.py         Shared MSS capture helper
 config.py          Key bindings and runtime timing
 main.py            Bot state machine and keyboard output
+rhythm_bot.py      Real-time rhythm capture and native keyboard output
+rhythm_detector.py Note geometry, prediction, and sustain state tracking
+rhythm_capture.py  Developer timing-sample recorder
 window.py          DragonMine window discovery, focus, and client rectangle
 debug_live.py      Live annotated detector preview
 debug_capture.py   Delayed one-shot screenshot tool

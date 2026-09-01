@@ -75,7 +75,7 @@ button { color: inherit; }
   align-items: center;
 }
 
-.topbar { justify-content: space-between; gap: 24px; margin-bottom: clamp(28px, 5vh, 52px); }
+.topbar { justify-content: space-between; gap: 24px; margin-bottom: 18px; }
 .brand-lockup { gap: 15px; }
 
 .brand-mark {
@@ -125,6 +125,38 @@ h3 { margin: 4px 0 0; font: 700 25px/1 var(--display); }
 .icon-button { width: 38px; height: 38px; display: grid; place-items: center; }
 .icon-button svg { width: 17px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: square; }
 .icon-button:hover, .text-button:hover { border-color: var(--energy-deep); color: var(--energy-deep); }
+
+.game-switcher {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-bottom: clamp(20px, 3vh, 30px);
+  border: 1px solid var(--line);
+  background: var(--surface);
+}
+.game-switcher button {
+  min-width: 0;
+  padding: 11px 16px;
+  display: grid;
+  grid-template-columns: 112px 1fr;
+  grid-template-rows: auto auto;
+  column-gap: 14px;
+  border: 0;
+  border-right: 1px solid var(--line);
+  color: var(--ink-soft);
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  position: relative;
+}
+.game-switcher button:last-child { border-right: 0; }
+.game-switcher button::after { content: ""; position: absolute; inset: auto 0 0; height: 3px; background: transparent; }
+.game-switcher button:hover:not(:disabled) { color: var(--ink); background: color-mix(in oklch, var(--energy) 7%, transparent); }
+.game-switcher button.is-selected { color: var(--ink); background: color-mix(in oklch, var(--energy) 11%, var(--surface)); }
+.game-switcher button.is-selected::after { background: var(--energy); }
+.game-switcher button:disabled { cursor: not-allowed; opacity: .58; }
+.game-switcher small { grid-row: 1 / 3; align-self: center; color: var(--energy-deep); font: 700 9px/1 "Aptos", "Segoe UI Variable"; letter-spacing: .15em; }
+.game-switcher strong { font: 700 19px/1 var(--display); }
+.game-switcher span { margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
 
 .command-deck {
   background: var(--surface);
@@ -196,8 +228,21 @@ h3 { margin: 4px 0 0; font: 700 25px/1 var(--display); }
 .empty-pulse { width: 34px; height: 1px; background: var(--line-strong); position: relative; overflow: hidden; }
 .empty-pulse::after { content: ""; position: absolute; inset: 0; background: var(--energy); transform: translateX(-100%); animation: scan 1.7s ease-in-out infinite; }
 
+.rhythm-target { min-height: 82px; margin-top: 23px; display: grid; grid-template-columns: minmax(280px, 1.15fr) minmax(220px, .85fr); align-items: center; gap: 24px; }
+.lane-visual { height: 74px; display: grid; grid-template-columns: 1fr 3px 78px 3px 1fr; align-items: center; position: relative; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); overflow: hidden; }
+.lane-visual::before { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 1px; background: var(--line-strong); }
+.hit-line { width: 3px; height: 54px; background: var(--ink); opacity: .65; z-index: 1; }
+.lane-core { width: 42px; height: 42px; justify-self: center; display: grid; place-items: center; color: oklch(18% .04 120); background: var(--energy); clip-path: polygon(0 0, 75% 0, 100% 25%, 100% 100%, 25% 100%, 0 75%); font: 800 15px/1 var(--display); z-index: 1; }
+.note { justify-self: center; font: 800 31px/1 var(--display); z-index: 1; }
+.note-left { color: oklch(79% .14 210); }
+.note-up { color: oklch(86% .19 92); }
+.capture-result { min-width: 0; }
+.capture-result strong, .capture-result span { display: block; }
+.capture-result strong { font: 700 19px/1 var(--display); }
+.capture-result span { margin-top: 8px; color: var(--ink-soft); font: 11px/1.55 "Cascadia Code", "Consolas", monospace; overflow-wrap: anywhere; }
+
 .lower-deck { display: grid; grid-template-columns: minmax(360px, .9fr) minmax(420px, 1.1fr); gap: 18px; margin-top: 18px; }
-.speed-control, .telemetry { min-height: 268px; padding: 28px; border: 1px solid var(--line); background: color-mix(in oklch, var(--surface) 94%, transparent); }
+.speed-control, .capture-protocol, .telemetry { min-height: 268px; padding: 28px; border: 1px solid var(--line); background: color-mix(in oklch, var(--surface) 94%, transparent); }
 .speed-selector { display: grid; grid-template-columns: repeat(3, 1fr); margin-top: 23px; border: 1px solid var(--line); }
 .speed-selector button { min-width: 0; padding: 17px 12px; border: 0; border-right: 1px solid var(--line); background: transparent; cursor: pointer; text-align: left; }
 .speed-selector button:last-child { border-right: 0; }
@@ -215,6 +260,13 @@ h3 { margin: 4px 0 0; font: 700 25px/1 var(--display); }
 .custom-timing label span { margin-top: 6px; display: flex; align-items: center; gap: 8px; color: var(--ink-soft); font-size: 10px; text-transform: none; letter-spacing: 0; }
 .custom-timing input { width: 86px; padding: 8px 10px; color: var(--ink); background: var(--surface-raised); border: 1px solid var(--line); outline: none; }
 .custom-timing input:focus { border-color: var(--energy-deep); }
+
+.protocol-list { margin: 21px 0 0; padding: 0; list-style: none; border-top: 1px solid var(--line); }
+.protocol-list li { min-height: 55px; display: grid; grid-template-columns: 34px 1fr; align-items: center; gap: 10px; border-bottom: 1px solid var(--line); }
+.protocol-list > li > span { color: var(--energy-deep); font: 800 11px/1 var(--display); }
+.protocol-list strong, .protocol-list small { display: block; }
+.protocol-list strong { font: 700 15px/1.1 var(--display); }
+.protocol-list small { margin-top: 4px; color: var(--ink-soft); font-size: 10px; line-height: 1.25; }
 
 .text-button { padding: 7px 10px; color: var(--ink-soft); font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .1em; }
 .text-button:disabled { opacity: .35; cursor: default; }
@@ -248,13 +300,17 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--energy-deep
   .app-shell { padding-inline: 16px; }
   .topbar { align-items: flex-start; }
   .connection-chip { display: none; }
+  .game-switcher { grid-template-columns: 1fr; }
+  .game-switcher button { border-right: 0; border-bottom: 1px solid var(--line); }
+  .game-switcher button:last-child { border-bottom: 0; }
   .status-stage { padding: 28px 22px; gap: 28px; }
   .scanner { width: 88px; height: 88px; }
   .scanner-crosshair::before { width: 104px; top: 43px; }
   .scanner-crosshair::after { height: 104px; left: 43px; }
   .status-copy { min-width: calc(100% - 120px); }
   .power-button { width: 100%; margin-left: 0; }
-  .sequence-panel, .speed-control, .telemetry { padding-inline: 20px; }
+  .sequence-panel, .speed-control, .capture-protocol, .telemetry { padding-inline: 20px; }
+  .rhythm-target { grid-template-columns: 1fr; }
   .speed-selector { grid-template-columns: 1fr; }
   .speed-selector button { border-right: 0; border-bottom: 1px solid var(--line); }
   .speed-selector button:last-child { border-bottom: 0; }
