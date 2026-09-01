@@ -36,7 +36,7 @@ keyboard = Controller()
 
 def press_sequence(directions):
     log(f"Enviando sequencia: {directions}")
-    for direction in directions:
+    for index, direction in enumerate(directions):
         key = KEY_MAP.get(direction)
         if key is None:
             log(f"  ! direcao desconhecida: {direction}, pulando")
@@ -44,7 +44,8 @@ def press_sequence(directions):
         keyboard.press(key)
         time.sleep(KEY_HOLD_TIME)
         keyboard.release(key)
-        time.sleep(KEY_PRESS_DELAY)
+        if index < len(directions) - 1:
+            time.sleep(KEY_PRESS_DELAY)
 
 
 def press_any_key():

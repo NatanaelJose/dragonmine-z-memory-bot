@@ -155,11 +155,13 @@ After a five-second countdown it writes `debug_window.png` and
 To verify that the game accepts `pynput` events independently from vision:
 
 ```powershell
-.\venv\Scripts\python.exe test_keys.py 10 left,left,down
+.\venv\Scripts\python.exe test_keys.py 10 left,left,down 0.05 0.05
 ```
 
-The first argument is the countdown in seconds. The second is a comma-separated
-direction sequence.
+The arguments are the countdown in seconds, a comma-separated direction
+sequence, key hold time, and delay between keys. The final two values are
+optional and default to `config.py`. Try lower values here before changing the
+bot defaults; repeated directions are the best stress test.
 
 ## Configuration
 

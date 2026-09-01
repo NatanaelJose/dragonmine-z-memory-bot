@@ -9,7 +9,10 @@ KEY_MAP = {
 }
 
 # Delay entre cada tecla enviada (segundos). Ajuste se o jogo nao registrar a tempo.
-KEY_PRESS_DELAY = 0.12
+# Minecraft processa o jogo em ticks de ~50ms. Um intervalo de 50ms entre
+# eventos mantem uma janela segura para direcoes repetidas sem atrasar
+# sequencias longas desnecessariamente.
+KEY_PRESS_DELAY = 0.05
 KEY_HOLD_TIME = 0.05
 
 # Intervalo do polling de tela (segundos). Cada frame custa so ~10-15ms
