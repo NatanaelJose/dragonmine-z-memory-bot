@@ -6,10 +6,74 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#10150f" />
     <title>DragonMine Z — Perfect Recall</title>
+    <script>
+      (() => {
+        let theme;
+        try { theme = localStorage.getItem("theme"); } catch (_) {}
+        if (theme !== "light" && theme !== "dark") {
+          theme = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+        }
+        document.documentElement.dataset.theme = theme;
+      })();
+    </script>
+    <style>
+      :root {
+        color-scheme: light;
+        --boot-bg: #f4f3e9;
+        --boot-ink: #253026;
+        --boot-line: #b6c2ab;
+        --boot-energy: #9ee532;
+      }
+      :root[data-theme="dark"] {
+        color-scheme: dark;
+        --boot-bg: #10150f;
+        --boot-ink: #eef3df;
+        --boot-line: #334b38;
+        --boot-energy: #b6f43d;
+      }
+      html, body, #root { width: 100%; min-height: 100%; margin: 0; background: var(--boot-bg); }
+      .boot-shell {
+        min-height: 100vh;
+        display: grid;
+        place-content: center;
+        justify-items: center;
+        gap: 18px;
+        color: var(--boot-ink);
+        font-family: "Segoe UI Variable", "Segoe UI", sans-serif;
+      }
+      .boot-mark {
+        width: 64px;
+        height: 64px;
+        display: grid;
+        place-items: center;
+        color: #152015;
+        background: var(--boot-energy);
+        clip-path: polygon(0 0, 76% 0, 100% 24%, 100% 100%, 24% 100%, 0 76%);
+        font: 800 25px/1 "Bahnschrift Condensed", "Arial Narrow", sans-serif;
+      }
+      .boot-label { margin: 0; font-size: 11px; font-weight: 700; letter-spacing: .2em; }
+      .boot-track { width: 190px; height: 2px; overflow: hidden; background: var(--boot-line); }
+      .boot-track::after {
+        content: "";
+        display: block;
+        width: 45%;
+        height: 100%;
+        background: var(--boot-energy);
+        animation: boot-scan 900ms ease-in-out infinite alternate;
+      }
+      @keyframes boot-scan { to { transform: translateX(125%); } }
+      @media (prefers-reduced-motion: reduce) { .boot-track::after { animation: none; width: 100%; } }
+    </style>
   </head>
 
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div class="boot-shell" role="status" aria-label="Initializing Perfect Recall">
+        <div class="boot-mark" aria-hidden="true">PR</div>
+        <p class="boot-label">INITIALIZING CONTROL UNIT</p>
+        <div class="boot-track" aria-hidden="true"></div>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

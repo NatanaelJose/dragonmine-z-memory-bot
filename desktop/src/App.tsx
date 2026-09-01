@@ -297,7 +297,7 @@ function App() {
       )}
 
       <footer>
-        <span>PERFECT RECALL // v0.1.0</span>
+        <span>PERFECT RECALL // v0.1.1</span>
         <span>LOCAL PROCESSING · NO FRAME UPLOAD</span>
       </footer>
     </main>
