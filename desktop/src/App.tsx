@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import "./App.css";
+import { translations, type Language } from "./i18n";
 
 type Speed = "fast" | "safe" | "custom";
 type GameMode = "memory" | "rhythm";
@@ -22,26 +23,6 @@ interface LogLine extends LogEvent {
   id: number;
   time: string;
 }
-
-const speedCopy: Record<Speed, { title: string; timing: string; note: string }> = {
-  fast: { title: "Fast", timing: "30 / 30 ms", note: "Verified limit" },
-  safe: { title: "Safe", timing: "50 / 50 ms", note: "More margin" },
-  custom: { title: "Custom", timing: "Manual", note: "Fine control" },
-};
-
-const phaseCopy: Record<Phase, { eyebrow: string; title: string; detail: string }> = {
-  offline: { eyebrow: "SYSTEM IDLE", title: "Bot standing by", detail: "Choose a speed profile and initialize the link." },
-  searching: { eyebrow: "SCANNING", title: "Looking for DragonMine", detail: "Open the game window. Detection will lock automatically." },
-  armed: { eyebrow: "LINK STABLE", title: "Ready for the next round", detail: "The detector is watching for a valid color sequence." },
-  memorizing: { eyebrow: "SEQUENCE LOCKED", title: "Pattern memorized", detail: "Waiting for the symbols to clear before sending input." },
-  sending: { eyebrow: "INPUT BURST", title: "Replaying sequence", detail: "Native arrow-key events are being sent to the game." },
-  tracking: { eyebrow: "RHYTHM LINK LIVE", title: "Tracking both receptors", detail: "Tap notes and sustains are being timed against the center lines." },
-};
-
-const gameCopy: Record<GameMode, { label: string; kicker: string; description: string }> = {
-  memory: { label: "Perfect Recall", kicker: "MEMORY CORE", description: "Detect, memorize, and replay color sequences." },
-  rhythm: { label: "Rhythm Drive", kicker: "RHYTHM CORE", description: "Track, tap, and hold incoming notes automatically." },
-};
 
 const arrows: Record<Direction, string> = {
   up: "↑",
@@ -91,6 +72,7 @@ function App() {
   const [sequence, setSequence] = useState<Direction[]>([]);
   const [logs, setLogs] = useState<LogLine[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [language, setLanguage] = useState<Language>(() => localStorage.getItem("language") === "pt-BR" ? "pt-BR" : "en");
   const [theme, setTheme] = useState<Theme>(() => {
     const saved = localStorage.getItem("theme") as Theme | null;
     return saved || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
@@ -102,6 +84,11 @@ function App() {
     document.documentElement.dataset.theme = theme;
     localStorage.setItem("theme", theme);
   }, [theme]);
+
+  useEffect(() => {
+    document.documentElement.lang = language;
+    localStorage.setItem("language", language);
+  }, [language]);
 
   useEffect(() => {
     localStorage.setItem("speed", speed);
@@ -195,8 +182,12 @@ function App() {
   }
 
   const isRhythm = game === "rhythm";
+  const copy = translations[language];
+  const speedCopy = copy.speed;
+  const phaseCopy = copy.phase;
+  const gameCopy = copy.game;
   const phaseInfo = phase === "offline" && isRhythm
-    ? { eyebrow: "RHYTHM CORE IDLE", title: "Autoplay standing by", detail: "Open the rhythm minigame and initialize while the start prompt is visible." }
+    ? copy.rhythmIdle
     : phaseCopy[phase];
 
   return (
@@ -205,22 +196,26 @@ function App() {
         <div className="brand-lockup">
           <div className="brand-mark" aria-hidden="true"><span>PR</span></div>
           <div>
-            <p className="overline">DRAGONMINE Z // CONTROL UNIT</p>
+            <p className="overline">{copy.brandOverline}</p>
             <h1>Perfect Recall</h1>
           </div>
         </div>
         <div className="topbar-actions">
           <div className={`connection-chip ${running ? "is-online" : ""}`}>
             <span className="signal-dot" />
-            {running ? "CORE ONLINE" : "CORE OFFLINE"}
+            {running ? copy.online : copy.offline}
           </div>
-          <button className="icon-button" onClick={() => setTheme(theme === "dark" ? "light" : "dark")} aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} theme`}>
+          <div className="language-switcher" role="group" aria-label={copy.languageLabel}>
+            <button className={language === "en" ? "is-selected" : ""} onClick={() => setLanguage("en")} aria-pressed={language === "en"} title={copy.english}>EN</button>
+            <button className={language === "pt-BR" ? "is-selected" : ""} onClick={() => setLanguage("pt-BR")} aria-pressed={language === "pt-BR"} title={copy.portuguese}>PT</button>
+          </div>
+          <button className="icon-button" onClick={() => setTheme(theme === "dark" ? "light" : "dark")} aria-label={copy.themeLabel(theme === "dark" ? copy.light : copy.dark)}>
             <ThemeIcon theme={theme} />
           </button>
         </div>
       </header>
 
-      <nav className="game-switcher" aria-label="Game mode">
+      <nav className="game-switcher" aria-label={copy.gameMode}>
         {(Object.keys(gameCopy) as GameMode[]).map((mode) => (
           <button
             key={mode}
@@ -242,7 +237,7 @@ function App() {
             <div className="scanner-ring ring-one" />
             <div className="scanner-ring ring-two" />
             <div className="scanner-crosshair" />
-            <span>{running ? "LIVE" : "IDLE"}</span>
+            <span>{running ? copy.live : copy.idle}</span>
           </div>
           <div className="status-copy">
             <p className="status-eyebrow">{phaseInfo.eyebrow}</p>
@@ -252,8 +247,8 @@ function App() {
           <button className={`power-button ${running ? "stop" : "start"}`} onClick={toggleBot} disabled={busy}>
             <span className="power-symbol" aria-hidden="true" />
             <span>
-              <small>{busy ? "PROCESSING" : running ? "END SESSION" : "INITIALIZE"}</small>
-              {busy ? "Please wait" : running ? "Stop bot" : isRhythm ? "Start rhythm bot" : "Start bot"}
+              <small>{busy ? copy.processing : running ? copy.endSession : copy.initialize}</small>
+              {busy ? copy.pleaseWait : running ? copy.stopBot : isRhythm ? copy.startRhythm : copy.startBot}
             </span>
           </button>
         </div>
@@ -261,10 +256,10 @@ function App() {
         <div className="sequence-panel">
           <div className="section-heading">
             <div>
-              <p className="overline">{isRhythm ? "DUAL LANE TRACKER" : "MEMORY BUFFER"}</p>
-              <h3>{isRhythm ? "Live hit geometry" : "Last sequence"}</h3>
+              <p className="overline">{isRhythm ? copy.dualLane : copy.memoryBuffer}</p>
+              <h3>{isRhythm ? copy.liveGeometry : copy.lastSequence}</h3>
             </div>
-            <span className="sequence-count">{isRhythm ? "TAP + HOLD" : `${String(sequence.length).padStart(2, "0")} INPUTS`}</span>
+            <span className="sequence-count">{isRhythm ? copy.tapHold : `${String(sequence.length).padStart(2, "0")} ${copy.inputs}`}</span>
           </div>
           {isRhythm ? (
             <div className="rhythm-target">
@@ -276,8 +271,8 @@ function App() {
                 <span className="note note-up">↑</span>
               </div>
               <div className="capture-result">
-                <strong>Center-line prediction</strong>
-                <span>Color identifies direction; motion controls key-down and key-up timing.</span>
+                <strong>{copy.centerPrediction}</strong>
+                <span>{copy.centerPredictionDetail}</span>
               </div>
             </div>
           ) : (
@@ -290,7 +285,7 @@ function App() {
             )) : (
               <div className="sequence-empty">
                 <span className="empty-pulse" />
-                Awaiting visual lock
+                {copy.awaitingLock}
               </div>
             )}
           </div>
@@ -303,27 +298,27 @@ function App() {
         <div className="capture-protocol">
           <div className="section-heading">
             <div>
-              <p className="overline">AUTOPLAY PROTOCOL</p>
-              <h3>Before initialization</h3>
+              <p className="overline">{copy.autoplayProtocol}</p>
+              <h3>{copy.beforeInitialization}</h3>
             </div>
-            <span className="timing-readout">LIVE</span>
+            <span className="timing-readout">{copy.live}</span>
           </div>
           <ol className="protocol-list">
-            <li><span>01</span><div><strong>Open Rhythm</strong><small>Leave the green start prompt visible.</small></div></li>
-            <li><span>02</span><div><strong>Initialize the core</strong><small>The app focuses DragonMine and starts the song.</small></div></li>
-            <li><span>03</span><div><strong>Do not move the window</strong><small>The detector taps and holds all four arrow keys.</small></div></li>
+            {copy.protocol.map(([title, detail], index) => (
+              <li key={title}><span>{String(index + 1).padStart(2, "0")}</span><div><strong>{title}</strong><small>{detail}</small></div></li>
+            ))}
           </ol>
         </div>
         ) : (
         <div className="speed-control">
           <div className="section-heading">
             <div>
-              <p className="overline">INPUT CALIBRATION</p>
-              <h3>Response profile</h3>
+              <p className="overline">{copy.inputCalibration}</p>
+              <h3>{copy.responseProfile}</h3>
             </div>
             <span className="timing-readout">{Math.round(timing.holdTime * 1000)} / {Math.round(timing.keyDelay * 1000)} ms</span>
           </div>
-          <div className="speed-selector" role="radiogroup" aria-label="Input speed">
+          <div className="speed-selector" role="radiogroup" aria-label={copy.inputSpeed}>
             {(Object.keys(speedCopy) as Speed[]).map((option) => (
               <button key={option} role="radio" aria-checked={speed === option} className={speed === option ? "selected" : ""} onClick={() => setSpeed(option)} disabled={running}>
                 <span>{speedCopy[option].title}</span>
@@ -334,12 +329,12 @@ function App() {
           </div>
           <div className={`custom-timing ${speed === "custom" ? "is-open" : ""}`} aria-hidden={speed !== "custom"}>
             <label>
-              Hold time
-              <span><input type="number" min="0.025" max="0.2" step="0.005" value={holdTime} onChange={(event) => setHoldTime(Number(event.target.value))} disabled={running || speed !== "custom"} /> seconds</span>
+              {copy.holdTime}
+              <span><input type="number" min="0.025" max="0.2" step="0.005" value={holdTime} onChange={(event) => setHoldTime(Number(event.target.value))} disabled={running || speed !== "custom"} /> {copy.seconds}</span>
             </label>
             <label>
-              Key interval
-              <span><input type="number" min="0.025" max="0.2" step="0.005" value={keyDelay} onChange={(event) => setKeyDelay(Number(event.target.value))} disabled={running || speed !== "custom"} /> seconds</span>
+              {copy.keyInterval}
+              <span><input type="number" min="0.025" max="0.2" step="0.005" value={keyDelay} onChange={(event) => setKeyDelay(Number(event.target.value))} disabled={running || speed !== "custom"} /> {copy.seconds}</span>
             </label>
           </div>
         </div>
@@ -348,10 +343,10 @@ function App() {
         <div className="telemetry">
           <div className="section-heading">
             <div>
-              <p className="overline">LIVE TELEMETRY</p>
-              <h3>Runtime feed</h3>
+              <p className="overline">{copy.liveTelemetry}</p>
+              <h3>{copy.runtimeFeed}</h3>
             </div>
-            <button className="text-button" onClick={() => setLogs([])} disabled={!logs.length}>Clear</button>
+            <button className="text-button" onClick={() => setLogs([])} disabled={!logs.length}>{copy.clear}</button>
           </div>
           <div className="log-window" aria-live="polite">
             {logs.length ? logs.map((entry) => (
@@ -359,7 +354,7 @@ function App() {
                 <time>{entry.time}</time><span>{entry.line}</span>
               </div>
             )) : (
-              <div className="log-empty">Telemetry will appear after initialization.</div>
+              <div className="log-empty">{copy.telemetryEmpty}</div>
             )}
             <div ref={logEnd} />
           </div>
@@ -368,13 +363,13 @@ function App() {
 
       {error && (
         <aside className="error-strip" role="alert">
-          <strong>LINK ERROR</strong><span>{error}</span><button onClick={() => setError(null)} aria-label="Dismiss error">×</button>
+          <strong>{copy.linkError}</strong><span>{error}</span><button onClick={() => setError(null)} aria-label={copy.dismissError}>×</button>
         </aside>
       )}
 
       <footer>
-        <span>PERFECT RECALL // v0.2.0</span>
-        <span>LOCAL PROCESSING · NO FRAME UPLOAD</span>
+        <span>PERFECT RECALL // v0.2.1</span>
+        <span>{copy.localProcessing}</span>
       </footer>
     </main>
   );

@@ -117,6 +117,26 @@ h3 { margin: 4px 0 0; font: 700 25px/1 var(--display); }
 .signal-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ink-soft); box-shadow: 0 0 0 3px color-mix(in oklch, var(--ink-soft) 14%, transparent); }
 .connection-chip.is-online .signal-dot { background: var(--energy-deep); box-shadow: 0 0 0 3px color-mix(in oklch, var(--energy) 25%, transparent); }
 
+.language-switcher {
+  height: 38px;
+  display: grid;
+  grid-template-columns: repeat(2, 36px);
+  border: 1px solid var(--line);
+  background: var(--surface);
+}
+.language-switcher button {
+  border: 0;
+  border-right: 1px solid var(--line);
+  color: var(--ink-soft);
+  background: transparent;
+  cursor: pointer;
+  font: 800 10px/1 "Aptos", "Segoe UI Variable", sans-serif;
+  letter-spacing: .08em;
+}
+.language-switcher button:last-child { border-right: 0; }
+.language-switcher button:hover { color: var(--energy-deep); }
+.language-switcher button.is-selected { color: oklch(18% .04 120); background: var(--energy); }
+
 .icon-button, .text-button {
   border: 1px solid var(--line);
   background: var(--surface);

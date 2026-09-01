@@ -91,6 +91,7 @@ The interface provides:
 
 - one-click start and stop controls;
 - dark and light themes saved between sessions;
+- English by default, with a persistent Brazilian Portuguese interface option;
 - `Fast`, `Safe`, and custom input timing profiles;
 - live detector state and runtime telemetry;
 - a color-coded view of the last memorized sequence;
