@@ -34,6 +34,7 @@ def countdown(seconds):
 def press_sequence(directions, hold_time=KEY_HOLD_TIME, press_delay=KEY_PRESS_DELAY):
     print(f"Enviando sequencia: {directions}")
     print(f"Tempos: hold={hold_time:.3f}s intervalo={press_delay:.3f}s")
+    started_at = time.perf_counter()
     for index, direction in enumerate(directions):
         key_name = KEY_MAP.get(direction)
         key = PYNPUT_KEYS.get(key_name)
@@ -46,7 +47,7 @@ def press_sequence(directions, hold_time=KEY_HOLD_TIME, press_delay=KEY_PRESS_DE
         keyboard.release(key)
         if index < len(directions) - 1:
             time.sleep(press_delay)
-    print("Sequencia enviada.")
+    print(f"Sequencia enviada em {time.perf_counter() - started_at:.2f}s.")
 
 
 def main():

@@ -9,11 +9,11 @@ KEY_MAP = {
 }
 
 # Delay entre cada tecla enviada (segundos). Ajuste se o jogo nao registrar a tempo.
-# Minecraft processa o jogo em ticks de ~50ms. Um intervalo de 50ms entre
-# eventos mantem uma janela segura para direcoes repetidas sem atrasar
-# sequencias longas desnecessariamente.
-KEY_PRESS_DELAY = 0.05
-KEY_HOLD_TIME = 0.05
+# Perfil experimental rapido. O pynput envia eventos nativos, entao podemos
+# testar abaixo de um tick do jogo; direcoes repetidas sao o caso mais
+# importante para confirmar que press/release continuam sendo registrados.
+KEY_PRESS_DELAY = 0.03
+KEY_HOLD_TIME = 0.03
 
 # Intervalo do polling de tela (segundos). Cada frame custa so ~10-15ms
 # para capturar + detectar, entao 0.05s (20 checagens/s) da folga e ainda
