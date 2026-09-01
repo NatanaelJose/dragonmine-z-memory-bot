@@ -1,0 +1,6 @@
+mss>=10.0
+numpy>=2.0
+opencv-python>=4.10
+pynput>=1.8
+PyGetWindow>=0.0.9
+pywin32>=311

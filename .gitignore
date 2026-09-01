@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyd
+.pytest_cache/
+
+# Virtual environments and local Python runtimes
+venv/
+.venv/
+.uv-python/
+.uv-cache/
+
+# Diagnostic captures
+debug_frames/
+debug_window.png
+debug_window_mask.png
+
+# Local development artifacts
+rtk/
+DEBUG_PROMPT.md
+
+# Editors and operating systems
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
