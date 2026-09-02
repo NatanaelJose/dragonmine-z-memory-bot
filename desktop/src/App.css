@@ -281,6 +281,15 @@ h3 { margin: 4px 0 0; font: 700 25px/1 var(--display); }
 .custom-timing input { width: 86px; padding: 8px 10px; color: var(--ink); background: var(--surface-raised); border: 1px solid var(--line); outline: none; }
 .custom-timing input:focus { border-color: var(--energy-deep); }
 
+.scan-control { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--line); }
+.scan-heading, .scan-range { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.scan-heading label { color: var(--ink); font: 700 13px/1 var(--display); }
+.scan-heading output { color: var(--energy-deep); font: 700 9px/1 "Aptos", "Segoe UI Variable", sans-serif; letter-spacing: .08em; }
+.scan-control > input { width: 100%; margin: 13px 0 7px; accent-color: var(--energy-deep); cursor: pointer; }
+.scan-control > input:disabled { cursor: not-allowed; opacity: .55; }
+.scan-range { color: var(--ink-soft); font: 700 8px/1 "Aptos", "Segoe UI Variable", sans-serif; letter-spacing: .08em; }
+.scan-control > p { margin: 10px 0 0; color: var(--ink-soft); font-size: 10px; line-height: 1.35; }
+
 .protocol-list { margin: 21px 0 0; padding: 0; list-style: none; border-top: 1px solid var(--line); }
 .protocol-list li { min-height: 55px; display: grid; grid-template-columns: 34px 1fr; align-items: center; gap: 10px; border-bottom: 1px solid var(--line); }
 .protocol-list > li > span { color: var(--energy-deep); font: 800 11px/1 var(--display); }

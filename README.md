@@ -227,6 +227,23 @@ Values of `0.02/0.02` were tested and dropped inputs, so they are not provided
 as a built-in profile. The selected timing is printed when the bot starts, and
 the measured send duration is logged after each sequence.
 
+### Memory scan interval
+
+The desktop app keeps the proven **50 ms** delay between memory-screen
+captures by default. At very high levels, where the arrow flash becomes
+shorter, the **Screen scan interval** control can reduce that extra delay down
+to **0 ms**. Lower values improve the chance of observing a brief frame but
+consume more CPU; the selected value is saved locally.
+
+The same setting is available from the command line in seconds:
+
+```powershell
+.\venv\Scripts\python.exe main.py --poll-interval 0.01
+```
+
+Use `0` for no extra wait between completed capture/detection cycles. This
+setting changes only visual polling frequency, not key hold or replay speed.
+
 ## Live detector
 
 Use the live overlay before changing detection thresholds or when a new visual
@@ -297,7 +314,7 @@ Runtime timing and key bindings live in `config.py`:
 | `KEY_MAP` | Maps detected directions to keyboard directions |
 | `SPEED_PROFILES` | Named key-hold and inter-key timing profiles |
 | `DEFAULT_SPEED_PROFILE` | Profile used when `--speed` is omitted |
-| `POLL_INTERVAL` | Delay between visual checks |
+| `POLL_INTERVAL` | Default delay between visual checks; adjustable from 0 to 50 ms in the app |
 
 Vision thresholds live in `arrow_detector.py`:
 

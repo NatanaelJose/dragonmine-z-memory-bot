@@ -83,9 +83,18 @@ def wait_for_window():
         time.sleep(1)
 
 
-def run(verbose=True, hold_time=KEY_HOLD_TIME, key_delay=KEY_PRESS_DELAY):
+def run(
+    verbose=True,
+    hold_time=KEY_HOLD_TIME,
+    key_delay=KEY_PRESS_DELAY,
+    poll_interval=POLL_INTERVAL,
+):
     print("Bot iniciado. Localizando janela do jogo...", flush=True)
-    print(f"Velocidade: hold={hold_time:.3f}s intervalo={key_delay:.3f}s", flush=True)
+    print(
+        f"Velocidade: hold={hold_time:.3f}s intervalo={key_delay:.3f}s "
+        f"captura={poll_interval:.3f}s",
+        flush=True,
+    )
     wait_for_window()
     print("Janela encontrada. Pressione Ctrl+C aqui no terminal para parar.", flush=True)
 
@@ -125,12 +134,12 @@ def run(verbose=True, hold_time=KEY_HOLD_TIME, key_delay=KEY_PRESS_DELAY):
                         log(f"  aguardando prompt sumir... ainda visivel={still_prompt}")
                     if not still_prompt:
                         break
-                    time.sleep(POLL_INTERVAL)
+                    time.sleep(poll_interval)
 
                 continue
 
             if not directions:
-                time.sleep(POLL_INTERVAL)
+                time.sleep(poll_interval)
                 continue
 
             # Uma unica leitura: assim que ve setas, usa exatamente essa
@@ -154,7 +163,7 @@ def run(verbose=True, hold_time=KEY_HOLD_TIME, key_delay=KEY_PRESS_DELAY):
                     break
                 if not detect_arrows(grab_window(sct, window_rect)):
                     break
-                time.sleep(POLL_INTERVAL)
+                time.sleep(poll_interval)
 
             log("Setas sumiram -- fase 'Repita!' comecou, enviando sequencia...")
             focus_game_window()
@@ -182,6 +191,12 @@ def parse_args():
     parser.add_argument("--hold-time", type=float, help="tempo personalizado segurando cada tecla")
     parser.add_argument("--key-delay", type=float, help="intervalo personalizado entre teclas")
     parser.add_argument(
+        "--poll-interval",
+        type=float,
+        default=POLL_INTERVAL,
+        help=f"intervalo entre capturas em segundos (padrao: {POLL_INTERVAL})",
+    )
+    parser.add_argument(
         "--capture-duration",
         type=float,
         default=DEFAULT_DURATION,
@@ -206,6 +221,8 @@ def parse_args():
     key_delay = args.key_delay if args.key_delay is not None else profile["key_delay"]
     if hold_time <= 0 or key_delay < 0:
         parser.error("--hold-time deve ser > 0 e --key-delay deve ser >= 0")
+    if not 0 <= args.poll_interval <= POLL_INTERVAL:
+        parser.error(f"--poll-interval deve ficar entre 0 e {POLL_INTERVAL}")
     if not -50 <= args.rhythm_lead_ms <= 100:
         parser.error("--rhythm-lead-ms deve ficar entre -50 e 100")
     return args, hold_time, key_delay
@@ -219,6 +236,10 @@ if __name__ == "__main__":
         elif selected_args.game == "rhythm":
             run_rhythm(selected_args.rhythm_lead_ms)
         else:
-            run(hold_time=selected_hold, key_delay=selected_delay)
+            run(
+                hold_time=selected_hold,
+                key_delay=selected_delay,
+                poll_interval=selected_args.poll_interval,
+            )
     except KeyboardInterrupt:
         print("\nBot encerrado.")

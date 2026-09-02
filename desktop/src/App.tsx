@@ -69,6 +69,12 @@ function App() {
   const [speed, setSpeed] = useState<Speed>(() => (localStorage.getItem("speed") as Speed) || "fast");
   const [holdTime, setHoldTime] = useState(0.04);
   const [keyDelay, setKeyDelay] = useState(0.04);
+  const [pollIntervalMs, setPollIntervalMs] = useState(() => {
+    const stored = localStorage.getItem("pollIntervalMs");
+    if (stored === null) return 50;
+    const saved = Number(stored);
+    return Number.isFinite(saved) && saved >= 0 && saved <= 50 ? saved : 50;
+  });
   const [sequence, setSequence] = useState<Direction[]>([]);
   const [logs, setLogs] = useState<LogLine[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -99,6 +105,10 @@ function App() {
   }, [game]);
 
   useEffect(() => {
+    localStorage.setItem("pollIntervalMs", String(pollIntervalMs));
+  }, [pollIntervalMs]);
+
+  useEffect(() => {
     if (!isTauri()) return;
     let alive = true;
     let unlisten: (() => void) | undefined;
@@ -122,7 +132,10 @@ function App() {
         const status = await invoke<ProcessStatus>("get_bot_status");
         if (!alive) return;
         setRunning(status.running);
-        if (!status.running) setPhase("offline");
+        if (!status.running) {
+          setPhase("offline");
+          setSequence([]);
+        }
       } catch (reason) {
         if (alive) setError(String(reason));
       }
@@ -154,12 +167,14 @@ function App() {
         await invoke("stop_bot");
         setRunning(false);
         setPhase("offline");
+        setSequence([]);
       } else {
         const status = await invoke<ProcessStatus>("start_bot", {
           game,
           speed,
           holdTime: speed === "custom" ? timing.holdTime : null,
           keyDelay: speed === "custom" ? timing.keyDelay : null,
+          pollInterval: pollIntervalMs / 1000,
         });
         setRunning(status.running);
         setPhase("searching");
@@ -337,6 +352,24 @@ function App() {
               <span><input type="number" min="0.025" max="0.2" step="0.005" value={keyDelay} onChange={(event) => setKeyDelay(Number(event.target.value))} disabled={running || speed !== "custom"} /> {copy.seconds}</span>
             </label>
           </div>
+          <div className="scan-control">
+            <div className="scan-heading">
+              <label htmlFor="poll-interval">{copy.scanInterval}</label>
+              <output htmlFor="poll-interval">{copy.scanValue(pollIntervalMs)}</output>
+            </div>
+            <input
+              id="poll-interval"
+              type="range"
+              min="0"
+              max="50"
+              step="5"
+              value={pollIntervalMs}
+              onChange={(event) => setPollIntervalMs(Number(event.target.value))}
+              disabled={running}
+            />
+            <div className="scan-range"><span>{copy.scanFastest}</span><span>{copy.scanDefault}</span></div>
+            <p>{copy.scanHint}</p>
+          </div>
         </div>
         )}
 
@@ -368,7 +401,7 @@ function App() {
       )}
 
       <footer>
-        <span>PERFECT RECALL // v0.2.1</span>
+        <span>PERFECT RECALL // v0.2.2</span>
         <span>{copy.localProcessing}</span>
       </footer>
     </main>
