@@ -1,0 +1,30 @@
+import unittest
+
+import cv2
+import numpy as np
+
+from autonomy import is_minigame_menu, menu_click_points
+
+
+class AutonomyTests(unittest.TestCase):
+    def test_detects_two_panel_minigame_menu(self):
+        frame = np.zeros((480, 854, 3), dtype=np.uint8)
+        green = cv2.cvtColor(np.uint8([[[60, 220, 85]]]), cv2.COLOR_HSV2BGR)[0, 0].tolist()
+        cv2.rectangle(frame, (27, 30), (300, 451), green, -1)
+        cv2.rectangle(frame, (538, 30), (814, 451), green, -1)
+        self.assertTrue(is_minigame_menu(frame))
+
+    def test_rejects_single_green_result_panel(self):
+        frame = np.zeros((480, 854, 3), dtype=np.uint8)
+        green = cv2.cvtColor(np.uint8([[[60, 220, 85]]]), cv2.COLOR_HSV2BGR)[0, 0].tolist()
+        cv2.rectangle(frame, (118, 121), (732, 357), green, -1)
+        self.assertFalse(is_minigame_menu(frame))
+
+    def test_click_points_follow_window_position_and_size(self):
+        item, play = menu_click_points((100, 200, 854, 480), "memory")
+        self.assertEqual(item, (228, 392))
+        self.assertEqual(play, (796, 620))
+
+
+if __name__ == "__main__":
+    unittest.main()

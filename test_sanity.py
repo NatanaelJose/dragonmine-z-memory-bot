@@ -79,6 +79,86 @@ def main():
     print("sequencia de 13 elementos em duas linhas:", detected4)
     assert detected4 == expected4, "FALHOU: ordem de leitura entre linhas incorreta"
 
+    # O nivel 61 observado no jogo mostra 33 posicoes (13 + 13 + 7). O teto
+    # antigo de 32 rejeitava essa leitura inteira, deixando o bot sem resposta.
+    canvas5 = np.zeros((230, 900, 3), dtype=np.uint8)
+    canvas5[:] = (40, 20, 60)
+    pattern = ["down", "left", "up", "right"]
+    expected5 = [pattern[i % len(pattern)] for i in range(33)]
+    row_lengths = (13, 13, 7)
+    offset = 0
+    for row, row_length in enumerate(row_lengths):
+        for column in range(row_length):
+            direction = expected5[offset + column]
+            draw_symbol(canvas5, 60 + column * 64, 55 + row * 58, direction, w=28, h=28)
+        offset += row_length
+
+    detected5 = detect_arrows(canvas5)
+    print("sequencia de nivel 61 com 33 elementos:", len(detected5))
+    assert detected5 == expected5, "FALHOU: sequencia de 33 elementos foi rejeitada"
+
+    # No nivel 75 existem 40 setas (13 + 13 + 13 + 1). Dois blobs coloridos
+    # do texto central podem cair na altura da primeira linha. Quando o nivel
+    # esperado e conhecido, a grade regular deve remover esses intrusos.
+    canvas6 = np.zeros((290, 1000, 3), dtype=np.uint8)
+    canvas6[:] = (40, 20, 60)
+    expected6 = [pattern[i % len(pattern)] for i in range(40)]
+    row_lengths = (13, 13, 13, 1)
+    offset = 0
+    for row, row_length in enumerate(row_lengths):
+        for column in range(row_length):
+            direction = expected6[offset + column]
+            draw_symbol(canvas6, 80 + column * 64, 55 + row * 58, direction, w=28, h=28)
+        offset += row_length
+    draw_symbol(canvas6, 80 + 5 * 64 + 32, 55, "up", w=14, h=24)
+    draw_symbol(canvas6, 80 + 8 * 64 + 32, 55, "up", w=14, h=24)
+
+    raw6 = detect_arrows(canvas6)
+    corrected6 = detect_arrows(canvas6, expected_sequence_length=40)
+    print("nivel 75 com ruido central: bruto=", len(raw6), "corrigido=", len(corrected6))
+    assert len(raw6) == 42, "FALHOU: fixture deveria reproduzir dois falsos positivos"
+    assert corrected6 == expected6, "FALHOU: grade deveria recuperar exatamente as 40 setas"
+
+    # Texto central pode fazer a primeira linha virar outro componente
+    # vertical. A quantidade esperada deve recompor todas as linhas globais.
+    canvas7 = np.zeros((330, 1000, 3), dtype=np.uint8)
+    canvas7[:] = (40, 20, 60)
+    row_y = (45, 158, 216, 274)
+    offset = 0
+    for row, row_length in enumerate((13, 13, 13, 1)):
+        for column in range(row_length):
+            direction = expected6[offset + column]
+            draw_symbol(canvas7, 80 + column * 64, row_y[row], direction, w=28, h=28)
+        offset += row_length
+    recovered7 = detect_arrows(canvas7, expected_sequence_length=40)
+    print("grade separada em componentes recuperada:", len(recovered7))
+    assert recovered7 == expected6, "FALHOU: linhas separadas deveriam formar a grade completa"
+
+    # Uma linha verde semelhante ao placar pode conter 13 blobs regulares,
+    # mas seus centros nao se alinham com as colunas repetidas das setas.
+    canvas8 = np.zeros((390, 1100, 3), dtype=np.uint8)
+    canvas8[:] = (40, 20, 60)
+    for column in range(13):
+        draw_symbol(canvas8, 190 + column * 40, 35, "down", w=16, h=22)
+    offset = 0
+    for row, row_length in enumerate((13, 13, 13, 1)):
+        for column in range(row_length):
+            direction = expected6[offset + column]
+            draw_symbol(canvas8, 100 + column * 64, 100 + row * 58, direction, w=28, h=28)
+        offset += row_length
+    recovered8 = detect_arrows(canvas8, expected_sequence_length=40)
+    print("linha de placar desalinhada removida:", len(recovered8))
+    assert recovered8 == expected6, "FALHOU: placar nao pode substituir uma linha de setas"
+
+    # Uma linha de HUD com muitos blobs jamais pode acionar combinacoes
+    # exponenciais enquanto o flash curto das setas esta na tela.
+    noisy_candidates = [
+        {"rect": (index * 18, 0, 12, 24)}
+        for index in range(32)
+    ]
+    from arrow_detector import _most_regular_subset
+    assert len(_most_regular_subset(noisy_candidates, 13)) == 13
+
     print("OK: filtros de sanidade funcionando")
 
 

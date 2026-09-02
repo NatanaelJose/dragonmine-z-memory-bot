@@ -168,7 +168,7 @@ def main():
     listener.start()
 
     try:
-        with mss.mss() as sct:
+        with mss.MSS() as sct:
             while True:
                 if not paused:
                     window_rect = get_window_rect()

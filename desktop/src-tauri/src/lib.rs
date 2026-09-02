@@ -178,6 +178,8 @@ fn start_bot(
     hold_time: Option<f64>,
     key_delay: Option<f64>,
     poll_interval: Option<f64>,
+    autonomous: bool,
+    target_level: Option<u32>,
 ) -> Result<ProcessStatus, String> {
     if refresh_child(&state)? {
         return Err("The bot is already running.".into());
@@ -195,6 +197,9 @@ fn start_bot(
     }
     if poll_interval.is_some_and(|value| !(0.0..=0.05).contains(&value)) {
         return Err("Capture interval must be between 0 and 0.05 seconds.".into());
+    }
+    if target_level.is_some_and(|value| !(1..=999).contains(&value)) {
+        return Err("Target level must be between 1 and 999.".into());
     }
 
     let runtime = resolve_runtime(&app)?;
@@ -237,6 +242,14 @@ fn start_bot(
         command
             .arg("--poll-interval")
             .arg(poll_interval.unwrap_or(0.05).to_string());
+    }
+    if autonomous {
+        command.arg("--autonomous");
+    }
+    if game == "memory" {
+        if let Some(target_level) = target_level {
+            command.arg("--target-level").arg(target_level.to_string());
+        }
     }
 
     #[cfg(target_os = "windows")]

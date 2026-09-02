@@ -38,7 +38,7 @@ def main():
         print("Nao encontrei a janela do jogo (titulo contendo 'DragonMine'). Abra o jogo e tente de novo.")
         sys.exit(1)
 
-    with mss.mss() as sct:
+    with mss.MSS() as sct:
         frame = grab_window(sct, window_rect)
 
     print("Capturado!")

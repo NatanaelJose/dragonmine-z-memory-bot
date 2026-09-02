@@ -20,7 +20,8 @@ import mss
 from pynput.keyboard import Controller, Key
 
 from arrow_detector import detect_arrows, is_prompt_screen
-from capture import grab_window
+from autonomy import handle_prompt
+from capture import grab_window, memory_capture_rect
 from config import (
     DEFAULT_SPEED_PROFILE,
     KEY_HOLD_TIME,
@@ -31,6 +32,13 @@ from config import (
 )
 from rhythm_capture import DEFAULT_DURATION, DEFAULT_FPS, record_rhythm_session
 from rhythm_bot import run_rhythm
+from level_progress import (
+    LevelProgress,
+    expected_arrows_for_level,
+    sequence_limit_for_target,
+    wrong_direction_for,
+)
+from memory_debug import save_memory_debug
 from window import focus_game_window, get_window_rect
 
 PYNPUT_KEYS = {
@@ -66,6 +74,56 @@ def press_any_key():
     keyboard.release(Key.space)
 
 
+def collect_sequence_until_clear(
+    sct,
+    initial_frame,
+    initial_sequence,
+    sequence_limit,
+    expected_count,
+    timeout=10,
+):
+    """Keep the fullest frame seen during Memorize and wait for a true clear."""
+    best_sequence = list(initial_sequence)
+    best_frame = initial_frame.copy()
+    deadline = time.perf_counter() + timeout
+    empty_since = None
+    while time.perf_counter() < deadline:
+        window_rect = get_window_rect()
+        if window_rect is None:
+            return best_sequence, best_frame, False
+        frame = grab_window(sct, memory_capture_rect(window_rect, expected_count))
+        directions = detect_arrows(
+            frame,
+            sequence_limit,
+            expected_count,
+        )
+        now = time.perf_counter()
+        if directions:
+            if len(directions) > len(best_sequence):
+                best_sequence = directions
+                best_frame = frame.copy()
+        if len(directions) == expected_count:
+            empty_since = None
+        elif empty_since is None:
+            empty_since = now
+        elif now - empty_since >= 0.12:
+            return best_sequence, best_frame, True
+        time.sleep(0.002)
+    return best_sequence, best_frame, False
+
+
+def submit_forced_failure(captured_sequence, hold_time, key_delay):
+    """Send exactly one guaranteed-wrong key, then stop producing input.
+
+    DragonMine ends the round on the first wrong key. Sending the remainder of
+    a fabricated sequence races the result screen and can move the selection in
+    the minigame menu before autonomous recovery gets a chance to click it.
+    """
+    wrong_direction = wrong_direction_for(captured_sequence[0])
+    press_sequence([wrong_direction], hold_time, key_delay)
+    return wrong_direction
+
+
 def log(msg):
     print(f"[{time.strftime('%H:%M:%S')}] {msg}", flush=True)
 
@@ -84,10 +142,12 @@ def wait_for_window():
 
 
 def run(
-    verbose=True,
+    verbose=False,
     hold_time=KEY_HOLD_TIME,
     key_delay=KEY_PRESS_DELAY,
     poll_interval=POLL_INTERVAL,
+    autonomous=False,
+    target_level=None,
 ):
     print("Bot iniciado. Localizando janela do jogo...", flush=True)
     print(
@@ -95,10 +155,15 @@ def run(
         f"captura={poll_interval:.3f}s",
         flush=True,
     )
+    sequence_limit = sequence_limit_for_target(target_level)
+    if target_level is not None:
+        log(f"LEVEL:CAPACITY target={target_level} max_arrows={sequence_limit}")
     wait_for_window()
     print("Janela encontrada. Pressione Ctrl+C aqui no terminal para parar.", flush=True)
 
-    with mss.mss() as sct:
+    with mss.MSS() as sct:
+        progress = LevelProgress(target_level)
+        last_prompt_check = 0.0
         while True:
             window_rect = get_window_rect()
             if window_rect is None:
@@ -106,9 +171,31 @@ def run(
                 wait_for_window()
                 continue
 
-            frame = grab_window(sct, window_rect)
-            prompt = is_prompt_screen(frame)
-            directions = detect_arrows(frame) if not prompt else []
+            # Arrow flashes become shorter at advanced levels. Scan only the
+            # central play field on every cycle and pay the full-frame cost
+            # for prompt/autonomy detection a few times per second.
+            now = time.perf_counter()
+            prompt = False
+            if now - last_prompt_check >= 0.20:
+                full_frame = grab_window(sct, window_rect)
+                prompt = is_prompt_screen(full_frame)
+                last_prompt_check = now
+            directions = []
+            memory_frame = None
+            if not prompt:
+                candidate_level = progress.current_level + 1 if progress.current_level else 1
+                expected_count = expected_arrows_for_level(candidate_level)
+                memory_frame = grab_window(
+                    sct,
+                    memory_capture_rect(window_rect, expected_count),
+                )
+                directions = detect_arrows(
+                    memory_frame,
+                    sequence_limit,
+                    expected_count,
+                )
+                if len(directions) != expected_count:
+                    directions = []
 
             if verbose:
                 log(f"prompt={prompt} setas={directions}")
@@ -119,36 +206,65 @@ def run(
             # nessa tela (nunca vai ter seta ate alguem apertar uma tecla).
             if prompt:
                 log("Tela 'Pressione qualquer tecla...' detectada, avancando...")
-                focus_game_window()
-                time.sleep(0.3)
-                press_any_key()
-
-                # espera a tela de prompt REALMENTE sumir antes de continuar
-                # -- se so desse um sleep fixo, um frame de transicao ainda
-                # mostrando o painel poderia disparar outro press_any_key(),
-                # mandando uma tecla extra bem no meio do 'Memorize!'
-                wait_start = time.time()
-                while time.time() - wait_start < 5:
-                    still_prompt = is_prompt_screen(grab_window(sct, get_window_rect() or window_rect))
-                    if verbose:
-                        log(f"  aguardando prompt sumir... ainda visivel={still_prompt}")
-                    if not still_prompt:
-                        break
-                    time.sleep(poll_interval)
-
+                had_active_run = progress.current_level > 0
+                restarted = handle_prompt(
+                    sct,
+                    window_rect,
+                    "memory",
+                    press_any_key,
+                    autonomous,
+                    log,
+                )
+                if restarted or had_active_run:
+                    progress.reset_run()
+                    log(f"LEVEL:RUN_RESET record={progress.best_completed}")
+                last_prompt_check = 0.0
                 continue
 
             if not directions:
                 time.sleep(poll_interval)
                 continue
 
-            # Uma unica leitura: assim que ve setas, usa exatamente essa
-            # leitura como a sequencia (sem tentar estabilizar varios
-            # frames). Simples e direto -- se a leitura vier incompleta ou
-            # errada, ajustamos o timing depois com base no que acontecer.
-            best_sequence = directions
+            update = progress.begin_round()
+            if update.completed_level is not None:
+                log(
+                    f"LEVEL:COMPLETED level={update.completed_level} "
+                    f"record={progress.best_completed}"
+                )
+            if update.target_reached:
+                log(f"LEVEL:TARGET_REACHED level={progress.best_completed}")
+                if not autonomous:
+                    return
+                log("LEVEL:TARGET_RESET aguardando Repita para reiniciar o teste.")
+                best_sequence, _, cleared = collect_sequence_until_clear(
+                    sct,
+                    memory_frame,
+                    directions,
+                    sequence_limit,
+                    expected_arrows_for_level(progress.run_completed + 1),
+                )
+                if not cleared:
+                    log("LEVEL:TARGET_RESET_CANCELLED setas nao sumiram; nenhum input enviado.")
+                    return
+                focus_game_window()
+                wrong_direction = submit_forced_failure(
+                    best_sequence,
+                    hold_time,
+                    key_delay,
+                )
+                log(
+                    f"LEVEL:FORCED_RESET expected={best_sequence[0]} "
+                    f"sent={wrong_direction} sent_count=1"
+                )
+                log("LEVEL:RECOVERY_WAIT aguardando a tela final sem enviar mais teclas.")
+                continue
+            log(f"LEVEL:CURRENT level={update.current_level} target={target_level or 0}")
+            expected_count = expected_arrows_for_level(update.current_level)
             print("=" * 50)
-            log(f"MEMORIZE detectado -- leitura unica: {best_sequence}")
+            log(
+                f"MEMORIZE detectado -- coletando rajada: "
+                f"inicial={len(directions)} esperado={expected_count}"
+            )
             print("=" * 50)
 
             # So envia a sequencia depois que as setas sumirem da tela --
@@ -156,14 +272,56 @@ def run(
             # 'Repita!'. Enviar durante o proprio 'Memorize!' e cedo demais
             # e o jogo pode nao aceitar o input nessa fase.
             log("Aguardando as setas sumirem (fim do 'Memorize!')...")
-            wait_start = time.time()
-            while time.time() - wait_start < 10:
-                window_rect = get_window_rect()
-                if window_rect is None:
-                    break
-                if not detect_arrows(grab_window(sct, window_rect)):
-                    break
-                time.sleep(poll_interval)
+            best_sequence, best_frame, cleared = collect_sequence_until_clear(
+                sct,
+                memory_frame,
+                directions,
+                sequence_limit,
+                expected_count,
+            )
+            if not cleared:
+                log(
+                    f"LEVEL:DEBUG_STOP level={update.current_level} "
+                    "motivo=timeout_ou_janela_perdida"
+                )
+                return
+            if len(best_sequence) != expected_count:
+                log(
+                    f"LEVEL:CAPTURE_MISMATCH level={update.current_level} "
+                    f"expected={expected_count} captured={len(best_sequence)}"
+                )
+                if autonomous:
+                    focus_game_window()
+                    wrong_direction = submit_forced_failure(
+                        best_sequence,
+                        hold_time,
+                        key_delay,
+                    )
+                    log(
+                        f"LEVEL:CAPTURE_RETRY record={progress.best_completed} "
+                        f"expected_first={best_sequence[0]} "
+                        f"sent={wrong_direction} sent_count=1"
+                    )
+                    log("LEVEL:RECOVERY_WAIT aguardando a tela final sem enviar mais teclas.")
+                    continue
+                log(f"LEVEL:DEBUG_STOP record={progress.best_completed}")
+                return
+            if update.current_level >= 120:
+                try:
+                    debug_root = save_memory_debug(
+                        best_frame,
+                        update.current_level,
+                        expected_count,
+                        best_sequence,
+                        sequence_limit,
+                    )
+                    log(f"LEVEL:DEBUG_SAVED level={update.current_level} path={debug_root}")
+                except OSError as error:
+                    log(f"LEVEL:DEBUG_SAVE_FAILED {error}")
+            log(
+                f"MEMORIZE completo level={update.current_level} "
+                f"captured={len(best_sequence)} sequence={best_sequence}"
+            )
 
             log("Setas sumiram -- fase 'Repita!' comecou, enviando sequencia...")
             focus_game_window()
@@ -214,6 +372,16 @@ def parse_args():
         default=8.0,
         help="antecipacao do input de ritmo em milissegundos",
     )
+    parser.add_argument(
+        "--autonomous",
+        action="store_true",
+        help="reinicia automaticamente o minigame depois de uma falha",
+    )
+    parser.add_argument(
+        "--target-level",
+        type=int,
+        help="encerra depois de confirmar que este nivel foi concluido",
+    )
     args = parser.parse_args()
 
     profile = SPEED_PROFILES[args.speed]
@@ -225,6 +393,8 @@ def parse_args():
         parser.error(f"--poll-interval deve ficar entre 0 e {POLL_INTERVAL}")
     if not -50 <= args.rhythm_lead_ms <= 100:
         parser.error("--rhythm-lead-ms deve ficar entre -50 e 100")
+    if args.target_level is not None and not 1 <= args.target_level <= 999:
+        parser.error("--target-level deve ficar entre 1 e 999")
     return args, hold_time, key_delay
 
 
@@ -234,12 +404,14 @@ if __name__ == "__main__":
         if selected_args.game == "rhythm-capture":
             record_rhythm_session(selected_args.capture_duration, selected_args.capture_fps)
         elif selected_args.game == "rhythm":
-            run_rhythm(selected_args.rhythm_lead_ms)
+            run_rhythm(selected_args.rhythm_lead_ms, autonomous=selected_args.autonomous)
         else:
             run(
                 hold_time=selected_hold,
                 key_delay=selected_delay,
                 poll_interval=selected_args.poll_interval,
+                autonomous=selected_args.autonomous,
+                target_level=selected_args.target_level,
             )
     except KeyboardInterrupt:
         print("\nBot encerrado.")

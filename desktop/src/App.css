@@ -149,7 +149,7 @@ h3 { margin: 4px 0 0; font: 700 25px/1 var(--display); }
 .game-switcher {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  margin-bottom: clamp(20px, 3vh, 30px);
+  margin-bottom: 0;
   border: 1px solid var(--line);
   background: var(--surface);
 }
@@ -177,6 +177,39 @@ h3 { margin: 4px 0 0; font: 700 25px/1 var(--display); }
 .game-switcher small { grid-row: 1 / 3; align-self: center; color: var(--energy-deep); font: 700 9px/1 "Aptos", "Segoe UI Variable"; letter-spacing: .15em; }
 .game-switcher strong { font: 700 19px/1 var(--display); }
 .game-switcher span { margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
+
+.autonomy-bar {
+  min-height: 54px;
+  margin-bottom: clamp(20px, 3vh, 30px);
+  padding: 8px 12px 8px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  border: 1px solid var(--line);
+  border-top: 0;
+  background: color-mix(in oklch, var(--surface) 96%, transparent);
+}
+.autonomy-bar > div { min-width: 0; display: flex; align-items: center; gap: 11px; }
+.autonomy-bar strong, .autonomy-bar small { display: block; }
+.autonomy-bar strong { font: 700 13px/1 var(--display); }
+.autonomy-bar small { margin-top: 4px; color: var(--ink-soft); font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.autonomy-indicator { width: 7px; height: 7px; flex: 0 0 auto; border-radius: 50%; background: var(--ink-soft); }
+.autonomy-bar.is-enabled .autonomy-indicator { background: var(--energy-deep); box-shadow: 0 0 0 3px color-mix(in oklch, var(--energy) 25%, transparent); }
+.autonomy-bar > button { min-width: 92px; height: 34px; padding: 0 11px; display: flex; align-items: center; justify-content: space-between; gap: 10px; border: 1px solid var(--line); color: var(--ink-soft); background: var(--surface); cursor: pointer; font: 800 9px/1 "Aptos", "Segoe UI Variable", sans-serif; letter-spacing: .09em; }
+.autonomy-bar > button > span { width: 23px; height: 12px; border: 1px solid var(--line-strong); position: relative; }
+.autonomy-bar > button > span::after { content: ""; width: 6px; height: 6px; position: absolute; left: 2px; top: 2px; background: var(--ink-soft); transition: transform 160ms ease-out, background 160ms ease-out; }
+.autonomy-bar.is-enabled > button { color: oklch(18% .04 120); border-color: var(--energy); background: var(--energy); }
+.autonomy-bar.is-enabled > button > span { border-color: currentColor; }
+.autonomy-bar.is-enabled > button > span::after { background: currentColor; transform: translateX(11px); }
+.autonomy-bar > button:disabled { cursor: not-allowed; opacity: .55; }
+.level-control { margin-left: auto; display: grid !important; grid-template-columns: auto 62px; gap: 3px 7px !important; align-items: center; }
+.level-control label { color: var(--ink-soft); font: 800 9px/1 "Aptos", "Segoe UI Variable", sans-serif; letter-spacing: .1em; text-transform: uppercase; }
+.level-control input { width: 62px; height: 30px; border: 1px solid var(--line-strong); color: var(--ink); background: var(--surface); text-align: center; font: 700 14px/1 var(--display); }
+.level-control input:focus { outline: 2px solid color-mix(in oklch, var(--energy) 55%, transparent); outline-offset: 1px; }
+.level-control input:disabled { opacity: .45; }
+.level-control span { color: var(--ink-soft); font-size: 9px; white-space: nowrap; }
+.level-control .capacity-readout { grid-column: 1 / -1; color: var(--energy-deep); }
 
 .command-deck {
   background: var(--surface);
@@ -332,6 +365,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--energy-deep
   .game-switcher { grid-template-columns: 1fr; }
   .game-switcher button { border-right: 0; border-bottom: 1px solid var(--line); }
   .game-switcher button:last-child { border-bottom: 0; }
+  .autonomy-bar small { white-space: normal; }
   .status-stage { padding: 28px 22px; gap: 28px; }
   .scanner { width: 88px; height: 88px; }
   .scanner-crosshair::before { width: 104px; top: 43px; }

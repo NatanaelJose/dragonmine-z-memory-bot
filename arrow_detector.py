@@ -1,4 +1,6 @@
 """Deteccao das setas coloridas do minigame de memoria via OpenCV."""
+from itertools import combinations
+
 import cv2
 import numpy as np
 
@@ -31,7 +33,8 @@ MIN_SEQUENCE_LENGTH = 3
 # Niveis avancados chegam a pelo menos 9 simbolos e quebram a sequencia em
 # mais de uma linha quando falta espaco horizontal. O teto continua sendo
 # apenas uma protecao contra leituras absurdas de HUD/texto.
-MAX_SEQUENCE_LENGTH = 32
+MAX_SEQUENCE_LENGTH = 128
+MAX_ARROWS_PER_ROW = 13
 
 # Cada direcao tem SEMPRE a mesma cor neste mod (confirmado jogando varios
 # niveis) -- entao a direcao e lida direto da cor do simbolo, sem precisar
@@ -154,7 +157,274 @@ def _group_candidate_rows(candidates, y_tolerance=15):
     return rows
 
 
-def analyze_arrow_candidates(bgr_image):
+def _most_regular_subset(candidates, desired_count):
+    """Remove same-row text/noise while preserving the arrow spacing grid."""
+    if len(candidates) <= desired_count:
+        return candidates
+
+    def score(subset):
+        centers = np.array([
+            item["rect"][0] + item["rect"][2] / 2.0
+            for item in subset
+        ])
+        gaps = np.diff(centers)
+        if not len(gaps) or not np.mean(gaps):
+            return float("inf")
+        return float(np.std(gaps) / np.mean(gaps))
+
+    # A real arrow row has at most a handful of intruders. HUD text can have
+    # dozens; enumerating C(n, 13) there stalls long enough to miss the flash.
+    if len(candidates) > desired_count + 4:
+        windows = (
+            candidates[start:start + desired_count]
+            for start in range(len(candidates) - desired_count + 1)
+        )
+        return list(min(windows, key=score))
+    return list(min(combinations(candidates, desired_count), key=score))
+
+
+def _fit_component_to_expected(component, expected_sequence_length):
+    """Fit top-to-bottom rows to the observed 13-column game grid."""
+    remaining = expected_sequence_length
+    fitted = []
+    for row in component:
+        if remaining <= 0:
+            break
+        desired = min(MAX_ARROWS_PER_ROW, remaining)
+        candidates = row["candidates"]
+        selected = _most_regular_subset(candidates, desired)
+        fitted.append({
+            **row,
+            "candidates": selected,
+            "directions": [item["direction"] for item in selected],
+        })
+        remaining -= len(selected)
+    return fitted
+
+
+def _row_gap_variation(candidates):
+    centers = np.array([
+        item["rect"][0] + item["rect"][2] / 2.0
+        for item in candidates
+    ])
+    gaps = np.diff(centers)
+    if not len(gaps) or not np.mean(gaps):
+        return 1.0
+    return float(np.std(gaps) / np.mean(gaps))
+
+
+def _direction_at_grid_cell(bgr_image, center_x, center_y, cell_gap):
+    """Read the lower half of a grid cell, below the overlapping score text."""
+    height, width = bgr_image.shape[:2]
+    half_width = max(8, round(cell_gap * 0.31))
+    left = max(0, round(center_x) - half_width)
+    right = min(width, round(center_x) + half_width + 1)
+    top = max(0, round(center_y - cell_gap * 0.02))
+    bottom = min(height, round(center_y + cell_gap * 0.32))
+    if right <= left or bottom <= top:
+        return None
+
+    hsv = cv2.cvtColor(bgr_image[top:bottom, left:right], cv2.COLOR_BGR2HSV)
+    saturated = (hsv[:, :, 1] >= SAT_MIN) & (hsv[:, :, 2] >= VAL_MIN)
+    counts = {
+        direction: int(np.count_nonzero(
+            saturated & (hsv[:, :, 0] >= low) & (hsv[:, :, 0] <= high)
+        ))
+        for direction, (low, high) in COLOR_HUE_RANGES.items()
+    }
+    direction, count = max(counts.items(), key=lambda item: item[1])
+    return direction if count >= MIN_BLOB_AREA else None
+
+
+def _recover_rows_from_clean_grid(bgr_image, analyzed_rows, expected_sequence_length):
+    """Rebuild a score-obscured top row from aligned clean rows below it."""
+    # Regroup only color-classified candidates. Geometry-only text fragments
+    # can otherwise bridge the score line into the first arrow row.
+    classified = [
+        candidate
+        for row in analyzed_rows
+        for candidate in row["candidates"]
+        if candidate["direction"] is not None
+    ]
+    clean_analysis = []
+    for group in _group_candidate_rows(classified):
+        group.sort(key=lambda candidate: candidate["rect"][0])
+        clean_analysis.append({
+            "center_y": float(np.median([
+                item["rect"][1] + item["rect"][3] / 2.0 for item in group
+            ])),
+            "symbol_size": float(np.median([
+                max(item["rect"][2], item["rect"][3]) for item in group
+            ])),
+            "directions": [item["direction"] for item in group],
+            "candidates": group,
+        })
+    analyzed_rows = sorted(clean_analysis, key=lambda item: item["center_y"])
+
+    full_row_count, remainder = divmod(
+        expected_sequence_length,
+        MAX_ARROWS_PER_ROW,
+    )
+    if full_row_count < 2:
+        return None
+
+    min_center_y = bgr_image.shape[0] * 0.12
+    clean_rows = []
+    for row in analyzed_rows:
+        candidates = sorted(row["candidates"], key=lambda item: item["rect"][0])
+        if (
+            row["center_y"] >= min_center_y
+            and len(candidates) == MAX_ARROWS_PER_ROW
+            and _row_gap_variation(candidates) <= 0.16
+        ):
+            clean_rows.append((row, candidates))
+    required_clean = full_row_count - 1
+    if len(clean_rows) < required_clean:
+        return None
+
+    # The lower real rows are consecutive; choose the vertically most regular
+    # aligned group when another 13-blob HUD row is present.
+    best = None
+    for chosen in combinations(clean_rows, required_clean):
+        chosen = sorted(chosen, key=lambda item: item[0]["center_y"])
+        matrix = np.array([
+            [item["rect"][0] + item["rect"][2] / 2.0 for item in row[1]]
+            for row in chosen
+        ])
+        column_misalignment = float(np.mean(np.std(matrix, axis=0)))
+        ys = np.array([row[0]["center_y"] for row in chosen])
+        gaps = np.diff(ys)
+        vertical_variation = float(np.std(gaps)) if len(gaps) else 0.0
+        score = column_misalignment + vertical_variation
+        if best is None or score < best[0]:
+            best = (score, chosen, matrix, ys)
+
+    _, chosen, matrix, ys = best
+    canonical_x = np.median(matrix, axis=0)
+    cell_gap = float(np.median(np.diff(canonical_x)))
+    row_gap = float(np.median(np.diff(ys))) if len(ys) > 1 else cell_gap
+    first_y = float(ys[0] - row_gap)
+    top_directions = [
+        _direction_at_grid_cell(bgr_image, center_x, first_y, cell_gap)
+        for center_x in canonical_x
+    ]
+    if any(direction is None for direction in top_directions):
+        return None
+    full_directions = list(top_directions)
+    for _, row_candidates in chosen:
+        full_directions.extend(
+            candidate["direction"] for candidate in row_candidates
+        )
+
+    if remainder:
+        last_full_y = first_y + (full_row_count - 1) * row_gap
+        trailing = [
+            row for row in analyzed_rows
+            if row["center_y"] > last_full_y + row_gap * 0.45
+            and len(row["candidates"]) >= remainder
+        ]
+        if not trailing:
+            return None
+        last_row = min(trailing, key=lambda row: row["center_y"])
+        selected = _most_regular_subset(last_row["candidates"], remainder)
+        full_directions.extend(item["direction"] for item in selected)
+    return full_directions
+
+
+def _expected_grid_rows(analyzed_rows, expected_sequence_length):
+    """Recover the 13-column grid even when center text splits components."""
+    full_row_count, remainder = divmod(
+        expected_sequence_length,
+        MAX_ARROWS_PER_ROW,
+    )
+    if full_row_count == 0:
+        eligible = [
+            row for row in analyzed_rows
+            if len(row["candidates"]) >= remainder
+        ]
+        if not eligible:
+            return None
+        row = min(
+            eligible,
+            key=lambda item: _row_gap_variation(
+                _most_regular_subset(item["candidates"], remainder)
+            ),
+        )
+        return [_most_regular_subset(row["candidates"], remainder)]
+
+    full_rows = []
+    for row in analyzed_rows:
+        if len(row["candidates"]) < MAX_ARROWS_PER_ROW:
+            continue
+        selected = _most_regular_subset(
+            row["candidates"],
+            MAX_ARROWS_PER_ROW,
+        )
+        full_rows.append((row, selected, _row_gap_variation(selected)))
+    if len(full_rows) < full_row_count:
+        return None
+
+    best = None
+    if len(full_rows) > full_row_count + 5:
+        ordered = sorted(full_rows, key=lambda item: item[0]["center_y"])
+        choices = (
+            ordered[start:start + full_row_count]
+            for start in range(len(ordered) - full_row_count + 1)
+        )
+    else:
+        choices = combinations(full_rows, full_row_count)
+    for chosen in choices:
+        chosen = sorted(chosen, key=lambda item: item[0]["center_y"])
+        centers = np.array([item[0]["center_y"] for item in chosen])
+        vertical_gaps = np.diff(centers)
+        vertical_variation = (
+            float(np.std(vertical_gaps) / np.mean(vertical_gaps))
+            if len(vertical_gaps) and np.mean(vertical_gaps)
+            else 0.0
+        )
+        column_centers = np.array([
+            [
+                candidate["rect"][0] + candidate["rect"][2] / 2.0
+                for candidate in item[1]
+            ]
+            for item in chosen
+        ])
+        reference_gaps = np.diff(np.median(column_centers, axis=0))
+        reference_gap = float(np.median(reference_gaps)) if len(reference_gaps) else 1.0
+        column_misalignment = float(
+            np.mean(np.std(column_centers, axis=0)) / max(reference_gap, 1.0)
+        )
+        # Real wrapped rows share the same 13 column centers. Score text can
+        # look regular in isolation, but it does not align with those columns.
+        score = (
+            sum(item[2] for item in chosen)
+            + vertical_variation
+            + column_misalignment * 4.0
+        )
+        if best is None or score < best[0]:
+            best = (score, chosen)
+
+    selected_rows = [item[1] for item in best[1]]
+    if remainder:
+        last_center = best[1][-1][0]["center_y"]
+        trailing = [
+            row for row in analyzed_rows
+            if row["center_y"] > last_center and len(row["candidates"]) >= remainder
+        ]
+        if not trailing:
+            return None
+        next_row = min(trailing, key=lambda row: row["center_y"])
+        selected_rows.append(
+            _most_regular_subset(next_row["candidates"], remainder)
+        )
+    return selected_rows
+
+
+def analyze_arrow_candidates(
+    bgr_image,
+    max_sequence_length=MAX_SEQUENCE_LENGTH,
+    expected_sequence_length=None,
+):
     """Analisa as setas e explica a decisao tomada para cada contorno.
 
     O retorno contem ``directions``, ``mask`` e ``candidates``. Cada
@@ -232,6 +502,44 @@ def analyze_arrow_candidates(bgr_image):
     # validar comprimento/repeticao, pois a ultima linha pode ter so 1-2
     # simbolos quando a sequencia acabou de quebrar para baixo.
     analyzed_rows.sort(key=lambda item: item["center_y"])
+
+    if expected_sequence_length is not None:
+        recovered_directions = _recover_rows_from_clean_grid(
+            bgr_image,
+            analyzed_rows,
+            expected_sequence_length,
+        )
+        if recovered_directions is not None:
+            return {
+                "directions": recovered_directions,
+                "mask": mask,
+                "candidates": candidates,
+            }
+        expected_rows = _expected_grid_rows(
+            analyzed_rows,
+            expected_sequence_length,
+        )
+        if expected_rows is not None:
+            selected_candidates = [
+                candidate
+                for row in expected_rows
+                for candidate in row
+            ]
+            directions = [item["direction"] for item in selected_candidates]
+            if len(set(directions)) > 1:
+                selected_ids = {id(candidate) for candidate in selected_candidates}
+                for candidate in candidates:
+                    if id(candidate) in selected_ids:
+                        candidate["accepted"] = True
+                        candidate["reason"] = "aceito pela grade esperada"
+                    elif candidate["direction"] is not None:
+                        candidate["reason"] = "fora da grade esperada"
+                return {
+                    "directions": directions,
+                    "mask": mask,
+                    "candidates": candidates,
+                }
+
     row_components = []
     for row in analyzed_rows:
         if not row_components:
@@ -248,6 +556,11 @@ def analyze_arrow_candidates(bgr_image):
 
     valid_components = []
     for component in row_components:
+        if expected_sequence_length is not None:
+            component = _fit_component_to_expected(
+                component,
+                expected_sequence_length,
+            )
         directions = []
         direction_candidates = []
         gap_variations = []
@@ -264,7 +577,7 @@ def analyze_arrow_candidates(bgr_image):
 
         if len(directions) < MIN_SEQUENCE_LENGTH:
             reason = f"sequencia curta ({len(directions)})"
-        elif len(directions) > MAX_SEQUENCE_LENGTH:
+        elif len(directions) > max_sequence_length:
             reason = f"sequencia longa ({len(directions)})"
         elif len(set(directions)) == 1:
             reason = "3+ direcoes identicas"
@@ -294,10 +607,18 @@ def analyze_arrow_candidates(bgr_image):
     return {"directions": directions, "mask": mask, "candidates": candidates}
 
 
-def detect_arrows(bgr_image):
+def detect_arrows(
+    bgr_image,
+    max_sequence_length=MAX_SEQUENCE_LENGTH,
+    expected_sequence_length=None,
+):
     """Retorna lista de direcoes ('up'/'down'/'left'/'right') ordenada da
     esquerda para a direita, uma por seta detectada na imagem."""
-    return analyze_arrow_candidates(bgr_image)["directions"]
+    return analyze_arrow_candidates(
+        bgr_image,
+        max_sequence_length,
+        expected_sequence_length,
+    )["directions"]
 
 
 def has_bright_text(bgr_image, min_pixels=20, brightness_threshold=180):

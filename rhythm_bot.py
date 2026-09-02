@@ -6,6 +6,7 @@ import mss
 from pynput.keyboard import Controller, Key
 
 from arrow_detector import is_prompt_screen
+from autonomy import handle_prompt
 from capture import grab_window
 from rhythm_capture import lane_capture_rect
 from rhythm_detector import RhythmTracker, detect_rhythm_notes
@@ -79,7 +80,7 @@ def _wait_for_window():
         time.sleep(0.25)
 
 
-def run_rhythm(lead_ms=8.0, verbose=False):
+def run_rhythm(lead_ms=8.0, verbose=False, autonomous=False):
     """Watch the lane and send arrow key down/up events at both receptors."""
     window_rect = _wait_for_window()
     focus_game_window()
@@ -89,17 +90,27 @@ def run_rhythm(lead_ms=8.0, verbose=False):
     frame_count = 0
     status_started = time.perf_counter()
     last_rect_check = status_started
+    last_autonomy_check = status_started
+
+    def press_any_key():
+        inputs.keyboard.press(Key.space)
+        time.sleep(TAP_SECONDS)
+        inputs.keyboard.release(Key.space)
 
     log(f"RHYTHM:READY Detector ativo com antecipacao de {lead_ms:.0f} ms.")
     try:
-        with mss.mss() as sct:
+        with mss.MSS() as sct:
             full_frame = grab_window(sct, window_rect)
             if is_prompt_screen(full_frame):
                 log("RHYTHM:START Tela inicial detectada; iniciando a musica.")
-                inputs.keyboard.press(Key.space)
-                time.sleep(TAP_SECONDS)
-                inputs.keyboard.release(Key.space)
-                time.sleep(0.7)
+                handle_prompt(
+                    sct,
+                    window_rect,
+                    "rhythm",
+                    press_any_key,
+                    autonomous,
+                    log,
+                )
 
             lane_rect = lane_capture_rect(window_rect)
             log("RHYTHM:TRACKING Acompanhando notas nas duas pistas.")
@@ -116,6 +127,27 @@ def run_rhythm(lead_ms=8.0, verbose=False):
                         window_rect = current_rect
                     lane_rect = lane_capture_rect(window_rect)
                     last_rect_check = now
+
+                if autonomous and now - last_autonomy_check >= 0.5:
+                    full_frame = grab_window(sct, window_rect)
+                    last_autonomy_check = now
+                    if is_prompt_screen(full_frame):
+                        inputs.release_all()
+                        log("AUTONOMY:FAIL Tela final detectada no ritmo.")
+                        handle_prompt(
+                            sct,
+                            window_rect,
+                            "rhythm",
+                            press_any_key,
+                            True,
+                            log,
+                        )
+                        tracker = RhythmTracker(lead_seconds=lead_ms / 1000.0)
+                        window_rect = get_window_rect() or window_rect
+                        lane_rect = lane_capture_rect(window_rect)
+                        last_rect_check = time.perf_counter()
+                        last_autonomy_check = last_rect_check
+                        continue
 
                 lane = grab_window(sct, lane_rect)
                 notes = detect_rhythm_notes(lane)

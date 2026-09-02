@@ -7,7 +7,7 @@ import { translations, type Language } from "./i18n";
 type Speed = "fast" | "safe" | "custom";
 type GameMode = "memory" | "rhythm";
 type Direction = "up" | "down" | "left" | "right";
-type Phase = "offline" | "searching" | "armed" | "memorizing" | "sending" | "tracking";
+type Phase = "offline" | "searching" | "armed" | "memorizing" | "sending" | "tracking" | "restarting" | "target" | "debug";
 type Theme = "light" | "dark";
 
 interface ProcessStatus {
@@ -42,6 +42,12 @@ function parseSequence(line: string): Direction[] | null {
 }
 
 function phaseFromLog(line: string, current: Phase): Phase {
+  if (line.includes("LEVEL:CAPTURE_RETRY")) return "restarting";
+  if (line.includes("LEVEL:DEBUG_STOP") || line.includes("LEVEL:CAPTURE_MISMATCH")) return "debug";
+  if (line.includes("LEVEL:TARGET_RESET") || line.includes("LEVEL:FORCED_RESET")) return "restarting";
+  if (line.includes("LEVEL:TARGET_REACHED")) return "target";
+  if (line.includes("AUTONOMY:FAIL") || line.includes("AUTONOMY:MENU") || line.includes("AUTONOMY:PLAY") || line.includes("AUTONOMY:NO_MEMORY")) return "restarting";
+  if (line.includes("AUTONOMY:START")) return "armed";
   if (line.includes("RHYTHM:TRACKING") || line.includes("RHYTHM:HIT") || line.includes("RHYTHM:HOLD")) return "tracking";
   if (line.includes("RHYTHM:READY") || line.includes("RHYTHM:START")) return "armed";
   if (line.includes("RHYTHM:WAITING")) return "searching";
@@ -51,6 +57,17 @@ function phaseFromLog(line: string, current: Phase): Phase {
   if (line.includes("Janela encontrada") || line.includes("prompt=")) return "armed";
   if (line.includes("nao encontrada") || line.includes("aguardando ela voltar")) return "searching";
   return current;
+}
+
+function levelFromLog(line: string, event: "CURRENT" | "COMPLETED"): number | null {
+  if (!line.includes(`LEVEL:${event}`)) return null;
+  const level = Number(line.match(/level=(\d+)/)?.[1]);
+  return Number.isInteger(level) && level > 0 ? level : null;
+}
+
+function storedLevel(key: string, fallback: number): number {
+  const value = Number(localStorage.getItem(key));
+  return Number.isInteger(value) && value >= 1 && value <= 999 ? value : fallback;
 }
 
 function ThemeIcon({ theme }: { theme: Theme }) {
@@ -75,6 +92,10 @@ function App() {
     const saved = Number(stored);
     return Number.isFinite(saved) && saved >= 0 && saved <= 50 ? saved : 50;
   });
+  const [autonomous, setAutonomous] = useState(() => localStorage.getItem("autonomous") === "true");
+  const [memoryRecord, setMemoryRecord] = useState(() => storedLevel("memoryRecord", 0));
+  const [targetLevel, setTargetLevel] = useState(() => storedLevel("memoryTargetLevel", 62));
+  const [currentLevel, setCurrentLevel] = useState(0);
   const [sequence, setSequence] = useState<Direction[]>([]);
   const [logs, setLogs] = useState<LogLine[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -109,6 +130,14 @@ function App() {
   }, [pollIntervalMs]);
 
   useEffect(() => {
+    localStorage.setItem("autonomous", String(autonomous));
+  }, [autonomous]);
+
+  useEffect(() => {
+    localStorage.setItem("memoryTargetLevel", String(targetLevel));
+  }, [targetLevel]);
+
+  useEffect(() => {
     if (!isTauri()) return;
     let alive = true;
     let unlisten: (() => void) | undefined;
@@ -116,6 +145,16 @@ function App() {
     listen<LogEvent>("bot-log", ({ payload }) => {
       const detected = parseSequence(payload.line);
       if (detected) setSequence(detected);
+      const activeLevel = levelFromLog(payload.line, "CURRENT");
+      if (activeLevel) setCurrentLevel(activeLevel);
+      const completedLevel = levelFromLog(payload.line, "COMPLETED");
+      if (completedLevel) {
+        setMemoryRecord((record) => {
+          const next = Math.max(record, completedLevel);
+          localStorage.setItem("memoryRecord", String(next));
+          return next;
+        });
+      }
       setPhase((current) => phaseFromLog(payload.line, current));
       if (payload.stream === "stderr") setError(payload.line);
       setLogs((current) => [
@@ -133,7 +172,7 @@ function App() {
         if (!alive) return;
         setRunning(status.running);
         if (!status.running) {
-          setPhase("offline");
+          setPhase((current) => current === "target" || current === "debug" ? current : "offline");
           setSequence([]);
         }
       } catch (reason) {
@@ -168,6 +207,7 @@ function App() {
         setRunning(false);
         setPhase("offline");
         setSequence([]);
+        setCurrentLevel(0);
       } else {
         const status = await invoke<ProcessStatus>("start_bot", {
           game,
@@ -175,11 +215,14 @@ function App() {
           holdTime: speed === "custom" ? timing.holdTime : null,
           keyDelay: speed === "custom" ? timing.keyDelay : null,
           pollInterval: pollIntervalMs / 1000,
+          autonomous,
+          targetLevel: game === "memory" && autonomous ? targetLevel : null,
         });
         setRunning(status.running);
         setPhase("searching");
         setLogs([]);
         setSequence([]);
+        setCurrentLevel(0);
       }
     } catch (reason) {
       setError(String(reason));
@@ -194,6 +237,7 @@ function App() {
     setPhase("offline");
     setLogs([]);
     setSequence([]);
+    setCurrentLevel(0);
   }
 
   const isRhythm = game === "rhythm";
@@ -204,6 +248,7 @@ function App() {
   const phaseInfo = phase === "offline" && isRhythm
     ? copy.rhythmIdle
     : phaseCopy[phase];
+  const arrowCapacity = 3 + Math.floor(targetLevel / 2) + 2;
 
   return (
     <main className="app-shell">
@@ -245,6 +290,39 @@ function App() {
           </button>
         ))}
       </nav>
+
+      <section className={`autonomy-bar ${autonomous ? "is-enabled" : ""}`}>
+        <div>
+          <span className="autonomy-indicator" aria-hidden="true" />
+          <span><strong>{copy.autonomousMode}</strong><small>{copy.autonomousDetail}</small></span>
+        </div>
+        {!isRhythm && (
+          <div className="level-control">
+            <label htmlFor="target-level">{copy.targetLevel}</label>
+            <input
+              id="target-level"
+              type="number"
+              min="1"
+              max="999"
+              value={targetLevel}
+              onChange={(event) => setTargetLevel(Math.min(999, Math.max(1, Number(event.target.value) || 1)))}
+              disabled={running || !autonomous}
+            />
+            <span>{copy.currentLevel}: {currentLevel || "—"}</span>
+            <span>{copy.recordLevel}: {memoryRecord || "—"}</span>
+            <span className="capacity-readout">{copy.arrowCapacity}: {arrowCapacity}</span>
+          </div>
+        )}
+        <button
+          role="switch"
+          aria-checked={autonomous}
+          onClick={() => setAutonomous((current) => !current)}
+          disabled={running}
+        >
+          <span aria-hidden="true" />
+          {autonomous ? copy.autonomousOn : copy.autonomousOff}
+        </button>
+      </section>
 
       <section className="command-deck">
         <div className="status-stage">

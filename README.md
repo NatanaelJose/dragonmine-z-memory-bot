@@ -20,10 +20,12 @@ the real symbols from HUD elements, titles, menus, and background noise.
 - Automatic DragonMine window discovery by title
 - Client-area capture without the Windows title bar
 - Fixed color-to-direction recognition; no fragile sprite-shape matching
-- Single-frame memorization for fast response
-- Multi-row sequence reading for advanced levels
-- Up to 32 symbols per sequence
+- Burst memorization that keeps the most complete frame seen
+- Adaptive multi-row reading and capture regions for advanced levels
+- Dynamic arrow capacity based on the selected target level
 - Automatic start/end prompt handling
+- Autonomous Memory and Rhythm retries through visual menu navigation
+- Configurable Memory target with current-level and persistent-record tracking
 - Native arrow-key input through `pynput`
 - Real-time two-sided rhythm-lane tracking
 - Predictive tap timing and key-down/key-up sustain control
@@ -64,8 +66,8 @@ The runtime is a small state machine driven entirely by visual state:
 6. **Reject noise.** Implausible lengths and sequences made entirely from one
    repeated direction are discarded. This prevents yellow title text such as
    `Boxe Sombrio` from being interpreted as many `up` symbols.
-7. **Memorize once.** As soon as a valid sequence appears, the bot stores that
-   single reading. It does not wait for multi-frame stabilization.
+7. **Capture the burst.** As soon as a valid sequence appears, the bot samples
+   the short `Memorize!` burst and keeps the fullest valid frame.
 8. **Wait for Repeat.** Inputs are sent only after the symbols disappear,
    marking the transition from `Memorize!` to `Repita!`.
 9. **Handle prompts.** A wide green prompt panel with bright inner text is
@@ -92,6 +94,9 @@ The interface provides:
 - one-click start and stop controls;
 - dark and light themes saved between sessions;
 - English by default, with a persistent Brazilian Portuguese interface option;
+- an autonomous mode that returns to the correct minigame and presses Play;
+- configurable Memory targets, live level progress, persistent records, and
+  automatically calculated arrow capacity;
 - `Fast`, `Safe`, and custom input timing profiles;
 - live detector state and runtime telemetry;
 - a color-coded view of the last memorized sequence;
@@ -196,6 +201,21 @@ python -m venv venv
 
 The bot waits until it finds the game window. Stop it at any time with
 `Ctrl+C` in the terminal.
+
+### Autonomous runs and Memory targets
+
+Enable **Autonomous run** in the desktop app to let Perfect Recall recover from
+a failed round. It dismisses the result prompt, recognizes the two-panel
+minigame menu without depending on Portuguese or English text, selects Shadow
+Boxing or Rhythm, clicks Play, and confirms that the menu closed.
+
+For Memory runs, set a target from 1 to 999. The app derives the required arrow
+capacity from DragonMine's observed progression, displays the current level,
+and keeps the highest completed level locally. Completion is only counted when
+the following round appears. At the target, the bot sends exactly one known
+wrong direction, stops producing keyboard input, and lets autonomous recovery
+restart the benchmark safely. Memory gameplay has reached level 145 in live
+testing.
 
 ### Input speed
 
@@ -326,7 +346,7 @@ Vision thresholds live in `arrow_detector.py`:
 | `MAX_BLOB_WIDTH`, `MAX_BLOB_HEIGHT` | Oversized-HUD rejection thresholds |
 | `MAX_ASPECT_RATIO` | Rejects very thin bars and panels |
 | `MIN_SEQUENCE_LENGTH` | Minimum complete sequence length |
-| `MAX_SEQUENCE_LENGTH` | Maximum complete sequence length; currently 32 |
+| `MAX_SEQUENCE_LENGTH` | Default ceiling when no target is selected; target runs calculate their required capacity |
 | `COLOR_HUE_RANGES` | HSV hue range for each direction |
 
 Prefer saving a real original/overlay/mask set before adjusting these values.
@@ -337,12 +357,12 @@ Every confirmed visual bug should become a regression test.
 Run the full offline regression suite after any detector change:
 
 ```powershell
-.\venv\Scripts\python.exe -m py_compile arrow_detector.py capture.py config.py debug_capture.py debug_live.py main.py rhythm_bot.py rhythm_capture.py rhythm_detector.py window.py
+.\venv\Scripts\python.exe -m py_compile arrow_detector.py autonomy.py capture.py config.py debug_capture.py debug_live.py level_progress.py main.py memory_debug.py rhythm_bot.py rhythm_capture.py rhythm_detector.py window.py
 .\venv\Scripts\python.exe test_detector.py
 .\venv\Scripts\python.exe test_noise.py
 .\venv\Scripts\python.exe test_prompt.py
 .\venv\Scripts\python.exe test_sanity.py
-.\venv\Scripts\python.exe -m unittest test_rhythm_detector.py
+.\venv\Scripts\python.exe -m unittest test_autonomy.py test_level_progress.py test_memory_capture.py test_rhythm_detector.py
 ```
 
 The tests cover:
@@ -353,15 +373,21 @@ The tests cover:
 - prompt panels versus other green menus;
 - entirely repeated noise sequences;
 - valid nine-symbol sequences containing repeated directions;
-- wrapped sequences read across multiple rows.
+- wrapped sequences read across multiple rows;
+- high-level grid reconstruction when score text overlaps the first row;
+- adaptive capture regions, autonomous menu recognition, level accounting, and
+  the one-key forced-reset safety rule.
 
 ## Project structure
 
 ```text
 arrow_detector.py  Computer-vision pipeline and prompt detection
+autonomy.py        Result-screen and minigame-menu recovery
 capture.py         Shared MSS capture helper
 config.py          Key bindings and runtime timing
+level_progress.py  Target, record, and dynamic-capacity accounting
 main.py            Bot state machine and keyboard output
+memory_debug.py    Automatic high-level frame and overlay evidence
 rhythm_bot.py      Real-time rhythm capture and native keyboard output
 rhythm_detector.py Note geometry, prediction, and sustain state tracking
 rhythm_capture.py  Developer timing-sample recorder

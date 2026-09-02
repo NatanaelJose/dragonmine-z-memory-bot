@@ -105,7 +105,7 @@ def record_rhythm_session(duration=DEFAULT_DURATION, target_fps=DEFAULT_FPS, out
     recording_ended_at = None
 
     try:
-        with mss.mss() as sct, timestamps_path.open("w", newline="", encoding="utf-8") as timestamps_file:
+        with mss.MSS() as sct, timestamps_path.open("w", newline="", encoding="utf-8") as timestamps_file:
             timestamps = csv.writer(timestamps_file)
             timestamps.writerow(["frame", "elapsed_ms"])
 
