@@ -21,6 +21,17 @@ def main():
     print("setas nessa tela (esperado vazio):", detect_arrows(canvas))
     assert is_prompt_screen(canvas)
 
+    # O mesmo prompt em GUI Scale 2x ocupa menos de 5% de uma janela 1080p.
+    # A geometria larga + texto interno ainda o distingue dos outros menus.
+    canvas_small = np.zeros((900, 1700, 3), dtype=np.uint8)
+    canvas_small[:] = (20, 10, 30)
+    cv2.rectangle(canvas_small, (700, 400), (1000, 470), (20, 90, 20), -1)
+    cv2.rectangle(canvas_small, (700, 400), (1000, 470), (255, 255, 255), 2)
+    cv2.putText(canvas_small, "Press any key", (735, 443),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 255, 255), 1)
+    print("prompt GUI 2x pequeno (esperado True):", is_prompt_screen(canvas_small))
+    assert is_prompt_screen(canvas_small)
+
     # painel verde grande SEM texto branco dentro -- simula outro painel do
     # jogo (ex: menu de habilidades) que tem cor parecida mas nao e o prompt
     canvas_menu = np.zeros((450, 850, 3), dtype=np.uint8)

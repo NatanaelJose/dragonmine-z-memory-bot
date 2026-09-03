@@ -32,10 +32,47 @@ class RhythmAction:
     sustained: bool = False
 
 
-def _head_and_tail(x, w, h, side, scale):
+def detect_hit_positions(lane_frame):
+    """Find the two tall white receptor lines at any Minecraft GUI scale."""
+    height, width = lane_frame.shape[:2]
+    hsv = cv2.cvtColor(lane_frame, cv2.COLOR_BGR2HSV)
+    # O receptor direito pode ser desenhado em cinza (V ~= 140) dependendo
+    # do shader e do GUI Scale. Notas continuam saturadas e ficam de fora.
+    white = ((hsv[:, :, 1] <= 80) & (hsv[:, :, 2] >= 115)).astype(np.uint8)
+
+    def strongest_vertical_line(start_fraction, end_fraction):
+        start = round(width * start_fraction)
+        end = round(width * end_fraction)
+        scores = np.count_nonzero(white[:, start:end], axis=0)
+        minimum = max(8, round(height * 0.30))
+        if not len(scores) or int(scores.max()) < minimum:
+            return None
+        indexes = np.flatnonzero(scores >= minimum)
+        groups = np.split(indexes, np.where(np.diff(indexes) > 1)[0] + 1)
+        # Cada linha tem poucos pixels de largura. Regioes claras extensas do
+        # cenario e da tela anterior nao podem virar um falso receptor.
+        groups = [group for group in groups if len(group) <= max(16, round(width * 0.012))]
+        if not groups:
+            return None
+        best = max(groups, key=lambda group: float(scores[group].sum()))
+        return start + float(np.mean(best))
+
+    left = strongest_vertical_line(0.28, 0.495)
+    right = strongest_vertical_line(0.505, 0.72)
+    if left is None or right is None:
+        return None
+    left_fraction, right_fraction = left / width, right / width
+    if abs(left_fraction - (1.0 - right_fraction)) > 0.045:
+        return None
+    if not 0.08 <= right_fraction - left_fraction <= 0.30:
+        return None
+    return left_fraction, right_fraction
+
+
+def _head_and_tail(x, w, h, side):
     """Estimate the head center from the leading edge of the moving note."""
-    head_inset = min(w / 2.0, max(6.0, min(24.0 * scale, h * 0.42)))
-    sustained = w > max(90.0 * scale, h * 2.2)
+    head_inset = min(w / 2.0, max(4.0, h * 0.42))
+    sustained = w > h * 2.2
     if side == "left":
         return x + w - 1 - head_inset, float(x), sustained
     return x + head_inset, float(x + w - 1), sustained
@@ -51,8 +88,7 @@ def detect_rhythm_notes(lane_frame):
     height, width = lane_frame.shape[:2]
     hsv = cv2.cvtColor(lane_frame, cv2.COLOR_BGR2HSV)
     y_min, y_max = round(height * LANE_Y_MIN), round(height * LANE_Y_MAX)
-    scale = width / 1766.0
-    kernel_width = max(3, round(9 * scale)) | 1
+    kernel_width = max(3, round(height * 0.035)) | 1
     notes = []
 
     for direction, (hue_low, hue_high) in COLOR_HUE_RANGES.items():
@@ -72,15 +108,15 @@ def detect_rhythm_notes(lane_frame):
         for contour in contours:
             x, y, w, h = cv2.boundingRect(contour)
             area = cv2.contourArea(contour)
-            if area < max(20, 55 * scale * scale):
+            if area < 20:
                 continue
-            if h < max(10, round(26 * scale)) or w < max(8, round(18 * scale)):
+            if h < 10 or w < 8:
                 continue
             if h > height * 0.42:
                 continue
 
             provisional_side = "left" if x + w / 2 < width / 2 else "right"
-            _, _, sustained = _head_and_tail(x, w, h, provisional_side, scale)
+            _, _, sustained = _head_and_tail(x, w, h, provisional_side)
             if sustained:
                 if x <= width * LEFT_HIT_X:
                     side = "left"
@@ -90,7 +126,7 @@ def detect_rhythm_notes(lane_frame):
                     side = provisional_side
             else:
                 side = provisional_side
-            head_x, tail_x, sustained = _head_and_tail(x, w, h, side, scale)
+            head_x, tail_x, sustained = _head_and_tail(x, w, h, side)
             # Discard scenery near the far edges and colored pixels between
             # the two receptors, where valid incoming heads never originate.
             if side == "left" and not width * 0.03 <= head_x <= width * 0.49:
@@ -105,13 +141,14 @@ def detect_rhythm_notes(lane_frame):
 class RhythmTracker:
     """Turn note positions into one-shot key actions at each receptor."""
 
-    def __init__(self, lead_seconds=0.008):
+    def __init__(self, lead_seconds=0.008, hit_positions=None):
         self.lead_seconds = lead_seconds
+        self.hit_positions = hit_positions or (LEFT_HIT_X, RIGHT_HIT_X)
         self.states = {}
 
-    @staticmethod
-    def _target(side, width):
-        return width * (LEFT_HIT_X if side == "left" else RIGHT_HIT_X)
+    def _target(self, side, width):
+        index = 0 if side == "left" else 1
+        return width * self.hit_positions[index]
 
     def update(self, notes, width, now):
         actions = []

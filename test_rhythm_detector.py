@@ -2,7 +2,12 @@ import cv2
 import numpy as np
 import unittest
 
-from rhythm_detector import RhythmNote, RhythmTracker, detect_rhythm_notes
+from rhythm_detector import (
+    RhythmNote,
+    RhythmTracker,
+    detect_hit_positions,
+    detect_rhythm_notes,
+)
 
 
 COLORS = {
@@ -26,6 +31,22 @@ def make_note(direction, head_x, side="left", sustain=0):
 
 
 class RhythmDetectorTests(unittest.TestCase):
+    def test_calibrates_receptors_that_move_with_gui_scale(self):
+        lane = np.zeros((253, 1766, 3), dtype=np.uint8)
+        cv2.line(lane, (804, 55), (804, 195), (255, 255, 255), 4)
+        cv2.line(lane, (962, 55), (962, 195), (255, 255, 255), 4)
+        positions = detect_hit_positions(lane)
+        self.assertIsNotNone(positions)
+        self.assertAlmostEqual(positions[0], 804 / 1766, places=3)
+        self.assertAlmostEqual(positions[1], 962 / 1766, places=3)
+
+    def test_small_gui_scale_note_is_not_rejected(self):
+        frame = np.zeros((253, 1766, 3), dtype=np.uint8)
+        cv2.rectangle(frame, (592, 91), (608, 112), COLORS["up"], -1)
+        notes = detect_rhythm_notes(frame)
+        self.assertEqual(len(notes), 1)
+        self.assertEqual(notes[0].direction, "up")
+
     def test_detects_tap_direction_and_head(self):
         notes = detect_rhythm_notes(make_note("up", 600))
         self.assertEqual(len(notes), 1)

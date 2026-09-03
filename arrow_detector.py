@@ -614,7 +614,7 @@ def has_bright_text(bgr_image, min_pixels=20, brightness_threshold=180):
 # unico painel, largo, e que nao domine a tela quase inteira.
 PROMPT_GREEN_LOWER = np.array([45, 60, 30])
 PROMPT_GREEN_UPPER = np.array([75, 255, 160])
-PROMPT_MIN_AREA_FRACTION = 0.05   # fracao minima da area da janela
+PROMPT_MIN_AREA_FRACTION = 0.008  # aceita o mesmo painel reduzido por GUI 2x
 PROMPT_MAX_AREA_FRACTION = 0.5    # painel de prompt nao domina a tela toda
 PROMPT_MIN_ASPECT_RATIO = 1.8     # w/h -- faixa horizontal larga, nao quadrada
 # fracao minima de pixels brilhantes DENTRO do miolo do painel (excluindo a
@@ -635,31 +635,33 @@ def is_prompt_screen(bgr_image):
     image_area = bgr_image.shape[0] * bgr_image.shape[1]
     min_area = image_area * PROMPT_MIN_AREA_FRACTION
 
-    # so conta paineis grandes o bastante para ser candidatos a prompt --
-    # se houver mais de um (ex: varios paineis de um menu de estatisticas),
-    # nao e a tela de prompt (que tem um unico painel isolado)
-    big_contours = [c for c in contours if cv2.contourArea(c) >= min_area]
-    if len(big_contours) != 1:
-        return False
+    image_height, image_width = bgr_image.shape[:2]
+    for contour in contours:
+        area = cv2.contourArea(contour)
+        if not min_area <= area <= image_area * PROMPT_MAX_AREA_FRACTION:
+            continue
 
-    largest = big_contours[0]
-    area = cv2.contourArea(largest)
-    if area > image_area * PROMPT_MAX_AREA_FRACTION:
-        return False
+        x, y, w, h = cv2.boundingRect(contour)
+        if w / h < PROMPT_MIN_ASPECT_RATIO:
+            continue
 
-    x, y, w, h = cv2.boundingRect(largest)
-    if w / h < PROMPT_MIN_ASPECT_RATIO:
-        return False
+        # O aviso sempre e uma faixa central. Esta condicao evita confundir
+        # HUD, barras e paineis laterais com o prompt quando o GUI esta menor.
+        center_x = x + w / 2
+        center_y = y + h / 2
+        if abs(center_x - image_width / 2) > image_width * 0.20:
+            continue
+        if not image_height * 0.20 <= center_y <= image_height * 0.80:
+            continue
 
-    panel_roi = bgr_image[y:y + h, x:x + w]
+        panel_roi = bgr_image[y:y + h, x:x + w]
+        margin_y, margin_x = max(1, h // 10), max(1, w // 10)
+        inner = panel_roi[margin_y:h - margin_y, margin_x:w - margin_x]
+        if inner.size == 0:
+            continue
 
-    # exclui a borda do painel (10% de margem de cada lado) para nao contar
-    # a borda branca do proprio painel como se fosse texto interno
-    margin_y, margin_x = max(1, h // 10), max(1, w // 10)
-    inner = panel_roi[margin_y:h - margin_y, margin_x:w - margin_x]
-    if inner.size == 0:
-        return False
-
-    gray = cv2.cvtColor(inner, cv2.COLOR_BGR2GRAY)
-    bright_pixels = np.count_nonzero(gray >= 180)
-    return bright_pixels >= inner.shape[0] * inner.shape[1] * PROMPT_MIN_BRIGHT_FRACTION_INSIDE
+        gray = cv2.cvtColor(inner, cv2.COLOR_BGR2GRAY)
+        bright_pixels = np.count_nonzero(gray >= 180)
+        if bright_pixels >= inner.shape[0] * inner.shape[1] * PROMPT_MIN_BRIGHT_FRACTION_INSIDE:
+            return True
+    return False

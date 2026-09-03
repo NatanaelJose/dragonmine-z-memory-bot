@@ -257,8 +257,8 @@ the measured send duration is logged after each sequence.
 
 ### Memory scan interval
 
-The desktop app keeps the proven **50 ms** delay between memory-screen
-captures by default. At very high levels, where the arrow flash becomes
+The desktop app uses a **10 ms** delay between memory-screen captures by
+default. At very high levels, where the arrow flash becomes
 shorter, the **Screen scan interval** control can reduce that extra delay down
 to **0 ms**. Lower values improve the chance of observing a brief frame but
 consume more CPU; the selected value is saved locally.
@@ -342,7 +342,7 @@ Runtime timing and key bindings live in `config.py`:
 | `KEY_MAP` | Maps detected directions to keyboard directions |
 | `SPEED_PROFILES` | Named key-hold and inter-key timing profiles |
 | `DEFAULT_SPEED_PROFILE` | Profile used when `--speed` is omitted |
-| `POLL_INTERVAL` | Default delay between visual checks; adjustable from 0 to 50 ms in the app |
+| `POLL_INTERVAL` | Default 10 ms delay between visual checks; adjustable from 0 to 50 ms in the app |
 
 Vision thresholds live in `arrow_detector.py`:
 

@@ -22,7 +22,8 @@ DEFAULT_SPEED_PROFILE = "fast"
 KEY_HOLD_TIME = SPEED_PROFILES[DEFAULT_SPEED_PROFILE]["hold_time"]
 KEY_PRESS_DELAY = SPEED_PROFILES[DEFAULT_SPEED_PROFILE]["key_delay"]
 
-# Intervalo do polling de tela (segundos). Cada frame custa so ~10-15ms
-# para capturar + detectar, entao 0.05s (20 checagens/s) da folga e ainda
-# reage rapido ao aparecer/sumir das setas.
-POLL_INTERVAL = 0.05
+# Intervalo do polling de tela (segundos). 10 ms e o novo equilibrio padrao
+# para capturar flashes curtos sem forcar todos os usuarios a usar 0 ms.
+# A interface ainda permite ajustar o intervalo de 0 a 50 ms.
+POLL_INTERVAL = 0.01
+MAX_POLL_INTERVAL = 0.05

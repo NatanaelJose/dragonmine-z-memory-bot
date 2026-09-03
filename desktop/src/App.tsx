@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { getVersion } from "@tauri-apps/api/app";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import "./App.css";
@@ -79,6 +80,7 @@ function ThemeIcon({ theme }: { theme: Theme }) {
 }
 
 function App() {
+  const [appVersion, setAppVersion] = useState("...");
   const [running, setRunning] = useState(false);
   const [busy, setBusy] = useState(false);
   const [phase, setPhase] = useState<Phase>("offline");
@@ -88,9 +90,11 @@ function App() {
   const [keyDelay, setKeyDelay] = useState(0.04);
   const [pollIntervalMs, setPollIntervalMs] = useState(() => {
     const stored = localStorage.getItem("pollIntervalMs");
-    if (stored === null) return 50;
+    const previousDefault = localStorage.getItem("pollIntervalDefaultMs");
+    localStorage.setItem("pollIntervalDefaultMs", "10");
+    if (stored === null || (previousDefault !== "10" && stored === "50")) return 10;
     const saved = Number(stored);
-    return Number.isFinite(saved) && saved >= 0 && saved <= 50 ? saved : 50;
+    return Number.isFinite(saved) && saved >= 0 && saved <= 50 ? saved : 10;
   });
   const [autonomous, setAutonomous] = useState(() => localStorage.getItem("autonomous") === "true");
   const [memoryRecord, setMemoryRecord] = useState(() => storedLevel("memoryRecord", 0));
@@ -107,6 +111,14 @@ function App() {
   const logId = useRef(0);
   const logEnd = useRef<HTMLDivElement>(null);
   const commandBusy = useRef(false);
+
+  useEffect(() => {
+    if (!isTauri()) {
+      setAppVersion("dev");
+      return;
+    }
+    getVersion().then(setAppVersion).catch(() => setAppVersion("unknown"));
+  }, []);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -486,7 +498,7 @@ function App() {
       )}
 
       <footer>
-        <span>PERFECT RECALL // v0.2.2</span>
+        <span>PERFECT RECALL // v{appVersion}</span>
         <span>{copy.localProcessing}</span>
       </footer>
     </main>

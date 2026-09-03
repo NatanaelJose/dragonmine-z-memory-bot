@@ -8,8 +8,9 @@ from pynput.keyboard import Controller, Key
 from arrow_detector import is_prompt_screen
 from autonomy import handle_prompt
 from capture import grab_window
+from input_pause import EscapePauseGuard
 from rhythm_capture import lane_capture_rect
-from rhythm_detector import RhythmTracker, detect_rhythm_notes
+from rhythm_detector import RhythmTracker, detect_hit_positions, detect_rhythm_notes
 from window import focus_game_window, get_window_rect
 
 
@@ -85,7 +86,6 @@ def run_rhythm(lead_ms=8.0, verbose=False, autonomous=False):
     window_rect = _wait_for_window()
     focus_game_window()
     time.sleep(0.25)
-    tracker = RhythmTracker(lead_seconds=lead_ms / 1000.0)
     inputs = RhythmKeyboard()
     frame_count = 0
     status_started = time.perf_counter()
@@ -98,8 +98,33 @@ def run_rhythm(lead_ms=8.0, verbose=False, autonomous=False):
         inputs.keyboard.release(Key.space)
 
     log(f"RHYTHM:READY Detector ativo com antecipacao de {lead_ms:.0f} ms.")
+    def calibrated_tracker(sct, lane_rect):
+        deadline = time.perf_counter() + 1.5
+        previous = None
+        hit_positions = None
+        while time.perf_counter() < deadline:
+            lane = grab_window(sct, lane_rect)
+            candidate = detect_hit_positions(lane)
+            if candidate is not None and previous is not None:
+                if max(abs(candidate[i] - previous[i]) for i in (0, 1)) <= 0.012:
+                    hit_positions = candidate
+                    break
+            previous = candidate
+            time.sleep(0.025)
+        if hit_positions is None:
+            log("RHYTHM:CALIBRATION Receptores nao encontrados; usando posicoes Auto.")
+        else:
+            log(
+                f"RHYTHM:CALIBRATION receptores={hit_positions[0]:.3f},"
+                f"{hit_positions[1]:.3f}"
+            )
+        return RhythmTracker(
+            lead_seconds=lead_ms / 1000.0,
+            hit_positions=hit_positions,
+        )
+
     try:
-        with mss.MSS() as sct:
+        with EscapePauseGuard(log) as pause_guard, mss.MSS() as sct:
             full_frame = grab_window(sct, window_rect)
             if is_prompt_screen(full_frame):
                 log("RHYTHM:START Tela inicial detectada; iniciando a musica.")
@@ -113,8 +138,11 @@ def run_rhythm(lead_ms=8.0, verbose=False, autonomous=False):
                 )
 
             lane_rect = lane_capture_rect(window_rect)
+            tracker = calibrated_tracker(sct, lane_rect)
             log("RHYTHM:TRACKING Acompanhando notas nas duas pistas.")
             while True:
+                if pause_guard.wait_if_paused(inputs.release_all):
+                    tracker = calibrated_tracker(sct, lane_rect)
                 now = time.perf_counter()
                 if now - last_rect_check >= 1.0:
                     current_rect = get_window_rect()
@@ -142,9 +170,9 @@ def run_rhythm(lead_ms=8.0, verbose=False, autonomous=False):
                             True,
                             log,
                         )
-                        tracker = RhythmTracker(lead_seconds=lead_ms / 1000.0)
                         window_rect = get_window_rect() or window_rect
                         lane_rect = lane_capture_rect(window_rect)
+                        tracker = calibrated_tracker(sct, lane_rect)
                         last_rect_check = time.perf_counter()
                         last_autonomy_check = last_rect_check
                         continue
