@@ -159,6 +159,37 @@ def main():
     from arrow_detector import _most_regular_subset
     assert len(_most_regular_subset(noisy_candidates, 13)) == 13
 
+    # Minecraft GUI Scale 2x/3x can fit more than the Auto layout's 13
+    # symbols on one line. Expected-length handling must preserve the actual
+    # detected rows instead of truncating every row to 13.
+    canvas9 = np.zeros((150, 1000, 3), dtype=np.uint8)
+    canvas9[:] = (40, 20, 60)
+    expected9 = [pattern[i % len(pattern)] for i in range(17)]
+    for column, direction in enumerate(expected9):
+        draw_symbol(canvas9, 35 + column * 55, 75, direction, w=20, h=28)
+    scaled_single = detect_arrows(canvas9, expected_sequence_length=17)
+    print("GUI menor com 17 setas na mesma linha:", len(scaled_single))
+    assert scaled_single == expected9, "FALHOU: GUI menor nao pode ser truncada em 13"
+
+    canvas10 = np.zeros((220, 1000, 3), dtype=np.uint8)
+    canvas10[:] = (40, 20, 60)
+    expected10 = [pattern[i % len(pattern)] for i in range(40)]
+    offset = 0
+    for row, row_length in enumerate((17, 17, 6)):
+        for column in range(row_length):
+            draw_symbol(
+                canvas10,
+                35 + column * 55,
+                50 + row * 60,
+                expected10[offset + column],
+                w=20,
+                h=28,
+            )
+        offset += row_length
+    scaled_wrapped = detect_arrows(canvas10, expected_sequence_length=40)
+    print("GUI menor com linhas 17+17+6:", len(scaled_wrapped))
+    assert scaled_wrapped == expected10, "FALHOU: GUI menor deve preservar linhas reais"
+
     print("OK: filtros de sanidade funcionando")
 
 

@@ -183,25 +183,6 @@ def _most_regular_subset(candidates, desired_count):
     return list(min(combinations(candidates, desired_count), key=score))
 
 
-def _fit_component_to_expected(component, expected_sequence_length):
-    """Fit top-to-bottom rows to the observed 13-column game grid."""
-    remaining = expected_sequence_length
-    fitted = []
-    for row in component:
-        if remaining <= 0:
-            break
-        desired = min(MAX_ARROWS_PER_ROW, remaining)
-        candidates = row["candidates"]
-        selected = _most_regular_subset(candidates, desired)
-        fitted.append({
-            **row,
-            "candidates": selected,
-            "directions": [item["direction"] for item in selected],
-        })
-        remaining -= len(selected)
-    return fitted
-
-
 def _row_gap_variation(candidates):
     centers = np.array([
         item["rect"][0] + item["rect"][2] / 2.0
@@ -556,11 +537,6 @@ def analyze_arrow_candidates(
 
     valid_components = []
     for component in row_components:
-        if expected_sequence_length is not None:
-            component = _fit_component_to_expected(
-                component,
-                expected_sequence_length,
-            )
         directions = []
         direction_candidates = []
         gap_variations = []

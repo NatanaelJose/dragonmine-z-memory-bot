@@ -19,11 +19,12 @@ const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 #[cfg(target_os = "windows")]
 const KEYEVENTF_KEYUP: u32 = 0x0002;
 
-fn release_arrow_keys() {
+fn release_control_keys() {
     #[cfg(target_os = "windows")]
-    for virtual_key in [0x25_u8, 0x26, 0x27, 0x28] {
+    for virtual_key in [0x20_u8, 0x25, 0x26, 0x27, 0x28] {
         // Safety: keybd_event is a stateless Win32 input call. Sending KEYUP
-        // for all arrows prevents a sustain from sticking if Python is killed.
+        // for Space and all arrows prevents an input from sticking if Python
+        // is killed between its key-down and key-up calls.
         unsafe { keybd_event(virtual_key, 0, KEYEVENTF_KEYUP, 0) };
     }
 }
@@ -143,16 +144,12 @@ fn emit_lines<R: std::io::Read + Send + 'static>(
     });
 }
 
-fn refresh_child(state: &BotProcess) -> Result<bool, String> {
-    let mut guard = state
-        .child
-        .lock()
-        .map_err(|_| "Bot process lock is poisoned")?;
-    if let Some(child) = guard.as_mut() {
+fn refresh_child_slot(slot: &mut Option<Child>) -> Result<bool, String> {
+    if let Some(child) = slot.as_mut() {
         match child.try_wait().map_err(|error| error.to_string())? {
             Some(_) => {
-                release_arrow_keys();
-                *guard = None;
+                release_control_keys();
+                *slot = None;
                 Ok(false)
             }
             None => Ok(true),
@@ -160,6 +157,14 @@ fn refresh_child(state: &BotProcess) -> Result<bool, String> {
     } else {
         Ok(false)
     }
+}
+
+fn refresh_child(state: &BotProcess) -> Result<bool, String> {
+    let mut guard = state
+        .child
+        .lock()
+        .map_err(|_| "Bot process lock is poisoned")?;
+    refresh_child_slot(&mut guard)
 }
 
 #[tauri::command]
@@ -181,9 +186,6 @@ fn start_bot(
     autonomous: bool,
     target_level: Option<u32>,
 ) -> Result<ProcessStatus, String> {
-    if refresh_child(&state)? {
-        return Err("The bot is already running.".into());
-    }
     if !matches!(game.as_str(), "memory" | "rhythm" | "rhythm-capture") {
         return Err("Unknown game mode.".into());
     }
@@ -200,6 +202,18 @@ fn start_bot(
     }
     if target_level.is_some_and(|value| !(1..=999).contains(&value)) {
         return Err("Target level must be between 1 and 999.".into());
+    }
+
+    // Keep this lock from the running check through process registration.
+    // Releasing it before spawn allowed two rapid Start requests to both see
+    // an empty slot; the last child then replaced the first and left an
+    // untracked bot that Pause could not stop.
+    let mut child_guard = state
+        .child
+        .lock()
+        .map_err(|_| "Bot process lock is poisoned")?;
+    if refresh_child_slot(&mut child_guard)? {
+        return Err("The bot is already running.".into());
     }
 
     let runtime = resolve_runtime(&app)?;
@@ -265,10 +279,8 @@ fn start_bot(
         emit_lines(stderr, "stderr", app.clone(), false);
     }
 
-    *state
-        .child
-        .lock()
-        .map_err(|_| "Bot process lock is poisoned")? = Some(child);
+    *child_guard = Some(child);
+    drop(child_guard);
     if game == "rhythm-capture" {
         if let Some(window) = app.get_webview_window("main") {
             let _ = window.minimize();
@@ -284,11 +296,14 @@ fn stop_bot(state: State<'_, BotProcess>) -> Result<ProcessStatus, String> {
         .lock()
         .map_err(|_| "Bot process lock is poisoned")?;
     if let Some(child) = guard.as_mut() {
-        release_arrow_keys();
+        release_control_keys();
         child
             .kill()
             .map_err(|error| format!("Failed to stop bot: {error}"))?;
         let _ = child.wait();
+        // The child can race one final key-down between the first release and
+        // process termination, so clear the controls again after it is gone.
+        release_control_keys();
     }
     *guard = None;
     Ok(ProcessStatus { running: false })
@@ -310,8 +325,10 @@ pub fn run() {
                 let state = window.state::<BotProcess>();
                 if let Ok(mut guard) = state.child.lock() {
                     if let Some(child) = guard.as_mut() {
-                        release_arrow_keys();
+                        release_control_keys();
                         let _ = child.kill();
+                        let _ = child.wait();
+                        release_control_keys();
                     }
                     *guard = None;
                 };

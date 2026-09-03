@@ -106,6 +106,7 @@ function App() {
   });
   const logId = useRef(0);
   const logEnd = useRef<HTMLDivElement>(null);
+  const commandBusy = useRef(false);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -199,6 +200,11 @@ function App() {
   }, [speed, holdTime, keyDelay]);
 
   async function toggleBot() {
+    // React state updates are asynchronous. The ref closes the same-tick gap
+    // where two rapid clicks could invoke start_bot before `busy` disabled
+    // the button.
+    if (commandBusy.current) return;
+    commandBusy.current = true;
     setBusy(true);
     setError(null);
     try {
@@ -227,6 +233,7 @@ function App() {
     } catch (reason) {
       setError(String(reason));
     } finally {
+      commandBusy.current = false;
       setBusy(false);
     }
   }

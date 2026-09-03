@@ -22,6 +22,8 @@ the real symbols from HUD elements, titles, menus, and background noise.
 - Fixed color-to-direction recognition; no fragile sprite-shape matching
 - Burst memorization that keeps the most complete frame seen
 - Adaptive multi-row reading and capture regions for advanced levels
+- Adaptive row layouts and autonomous menu clicks for Minecraft GUI Scale
+  Auto, 2x, and 3x
 - Dynamic arrow capacity based on the selected target level
 - Automatic start/end prompt handling
 - Autonomous Memory and Rhythm retries through visual menu navigation
@@ -92,6 +94,7 @@ as a hidden local process, and presents its status through a gamer-style HUD.
 The interface provides:
 
 - one-click start and stop controls;
+- atomic Start/Stop handling that prevents duplicate or orphaned bot processes;
 - dark and light themes saved between sessions;
 - English by default, with a persistent Brazilian Portuguese interface option;
 - an autonomous mode that returns to the correct minigame and presses Play;
@@ -216,6 +219,11 @@ the following round appears. At the target, the bot sends exactly one known
 wrong direction, stops producing keyboard input, and lets autonomous recovery
 restart the benchmark safely. Memory gameplay has reached level 145 in live
 testing.
+
+Perfect Recall detects the green menu-panel geometry at runtime instead of
+relying on coordinates captured at one Minecraft GUI scale. Memory rows are
+also read as they appear rather than being forced into 13-symbol chunks, so
+Auto, 2x, and 3x layouts can wrap at different positions.
 
 ### Input speed
 
