@@ -1,9 +1,15 @@
 import unittest
+from unittest.mock import patch
 
 import cv2
 import numpy as np
 
-from autonomy import find_minigame_menu_panels, is_minigame_menu, menu_click_points
+from autonomy import (
+    _dismiss_new_game_prompt,
+    find_minigame_menu_panels,
+    is_minigame_menu,
+    menu_click_points,
+)
 
 
 class AutonomyTests(unittest.TestCase):
@@ -47,6 +53,31 @@ class AutonomyTests(unittest.TestCase):
 
         item, _ = menu_click_points((0, 0, 854, 480), "rhythm", frame)
         self.assertEqual(item, (165, 171))
+
+    @patch("autonomy.time.sleep")
+    @patch("autonomy.focus_game_window")
+    @patch("autonomy._wait_for_frame")
+    def test_start_prompt_retries_until_it_is_visibly_closed(
+        self,
+        wait_for_frame,
+        _focus_game_window,
+        _sleep,
+    ):
+        wait_for_frame.side_effect = [(None, None), ((0, 0, 854, 480), object())]
+        presses = []
+        logs = []
+
+        confirmed = _dismiss_new_game_prompt(
+            object(),
+            (0, 0, 854, 480),
+            lambda: presses.append(True),
+            logs.append,
+        )
+
+        self.assertTrue(confirmed)
+        self.assertEqual(len(presses), 2)
+        self.assertTrue(any("START_RETRY" in line for line in logs))
+        self.assertTrue(any("START_CONFIRMED" in line for line in logs))
 
 
 if __name__ == "__main__":

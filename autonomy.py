@@ -112,6 +112,27 @@ def _wait_for_frame(sct, predicate, timeout, interval=0.08):
     return None, None
 
 
+def _dismiss_new_game_prompt(sct, window_rect, press_any_key, log, attempts=3):
+    """Press the start prompt until the screen visibly leaves that prompt."""
+    for attempt in range(1, attempts + 1):
+        focus_game_window()
+        time.sleep(0.12)
+        press_any_key()
+        cleared_rect, _ = _wait_for_frame(
+            sct,
+            lambda frame: not is_prompt_screen(frame),
+            timeout=0.55,
+            interval=0.05,
+        )
+        if cleared_rect is not None:
+            log("AUTONOMY:START_CONFIRMED Aviso fechou; novo jogo iniciado.")
+            return True
+        if attempt < attempts:
+            log(f"AUTONOMY:START_RETRY Aviso ainda visivel; tentativa {attempt + 1}/{attempts}.")
+    log("AUTONOMY:START_FAILED Aviso continuou visivel; reinicio nao confirmado.")
+    return False
+
+
 def handle_prompt(sct, window_rect, game, press_any_key, autonomous, log):
     """Dismiss a prompt and, when enabled, restart from the minigame menu.
 
@@ -170,8 +191,6 @@ def handle_prompt(sct, window_rect, game, press_any_key, autonomous, log):
     # Some versions open directly; others show one more any-key prompt.
     prompt_rect, _ = _wait_for_frame(sct, is_prompt_screen, timeout=0.8)
     if prompt_rect is not None:
-        focus_game_window()
-        time.sleep(0.12)
-        press_any_key()
-        log("AUTONOMY:START Prompt do novo jogo liberado.")
+        if not _dismiss_new_game_prompt(sct, prompt_rect, press_any_key, log):
+            return False
     return True

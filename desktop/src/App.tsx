@@ -8,7 +8,7 @@ import { translations, type Language } from "./i18n";
 type Speed = "fast" | "safe" | "custom";
 type GameMode = "memory" | "rhythm";
 type Direction = "up" | "down" | "left" | "right";
-type Phase = "offline" | "searching" | "armed" | "memorizing" | "sending" | "tracking" | "restarting" | "target" | "debug";
+type Phase = "offline" | "searching" | "armed" | "memorizing" | "sending" | "tracking" | "restarting" | "interrupted" | "target" | "debug";
 type Theme = "light" | "dark";
 
 interface ProcessStatus {
@@ -43,11 +43,12 @@ function parseSequence(line: string): Direction[] | null {
 }
 
 function phaseFromLog(line: string, current: Phase): Phase {
+  if (line.includes("INPUT:INTERRUPT_REQUESTED") || line.includes("INPUT:SEQUENCE_ABORTED")) return "interrupted";
   if (line.includes("LEVEL:CAPTURE_RETRY")) return "restarting";
   if (line.includes("LEVEL:DEBUG_STOP") || line.includes("LEVEL:CAPTURE_MISMATCH")) return "debug";
   if (line.includes("LEVEL:TARGET_RESET") || line.includes("LEVEL:FORCED_RESET")) return "restarting";
   if (line.includes("LEVEL:TARGET_REACHED")) return "target";
-  if (line.includes("AUTONOMY:FAIL") || line.includes("AUTONOMY:MENU") || line.includes("AUTONOMY:PLAY") || line.includes("AUTONOMY:NO_MEMORY")) return "restarting";
+  if (line.includes("AUTONOMY:FAIL") || line.includes("AUTONOMY:MENU") || line.includes("AUTONOMY:PLAY") || line.includes("AUTONOMY:NO_MEMORY") || line.includes("AUTONOMY:START_RETRY") || line.includes("AUTONOMY:START_FAILED")) return "restarting";
   if (line.includes("AUTONOMY:START")) return "armed";
   if (line.includes("RHYTHM:TRACKING") || line.includes("RHYTHM:HIT") || line.includes("RHYTHM:HOLD")) return "tracking";
   if (line.includes("RHYTHM:READY") || line.includes("RHYTHM:START")) return "armed";

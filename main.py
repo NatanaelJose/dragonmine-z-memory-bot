@@ -40,7 +40,7 @@ from level_progress import (
     wrong_direction_for,
 )
 from memory_debug import save_memory_debug
-from input_pause import EscapePauseGuard
+from input_pause import EscapeInterruptGuard
 from window import focus_game_window, get_window_rect
 
 PYNPUT_KEYS = {
@@ -63,13 +63,14 @@ def press_sequence(
     directions,
     hold_time=KEY_HOLD_TIME,
     key_delay=KEY_PRESS_DELAY,
-    pause_guard=None,
+    interrupt_guard=None,
 ):
     log(f"Enviando sequencia: {directions}")
     started_at = time.perf_counter()
     for index, direction in enumerate(directions):
-        if pause_guard is not None:
-            pause_guard.wait_if_paused(release_gameplay_keys)
+        if interrupt_guard is not None and interrupt_guard.consume_if_requested(release_gameplay_keys):
+            log("INPUT:SEQUENCE_ABORTED Sequencia cancelada pelo Esc.")
+            return False
         key = KEY_MAP.get(direction)
         if key is None:
             log(f"  ! direcao desconhecida: {direction}, pulando")
@@ -77,9 +78,13 @@ def press_sequence(
         keyboard.press(key)
         time.sleep(hold_time)
         keyboard.release(key)
+        if interrupt_guard is not None and interrupt_guard.consume_if_requested(release_gameplay_keys):
+            log("INPUT:SEQUENCE_ABORTED Sequencia cancelada pelo Esc.")
+            return False
         if index < len(directions) - 1:
             time.sleep(key_delay)
     log(f"Sequencia enviada em {time.perf_counter() - started_at:.2f}s")
+    return True
 
 
 def press_any_key():
@@ -175,11 +180,11 @@ def run(
     wait_for_window()
     print("Janela encontrada. Pressione Ctrl+C aqui no terminal para parar.", flush=True)
 
-    with EscapePauseGuard(log) as pause_guard, mss.MSS() as sct:
+    with EscapeInterruptGuard(log) as interrupt_guard, mss.MSS() as sct:
         progress = LevelProgress(target_level)
         last_prompt_check = 0.0
         while True:
-            pause_guard.wait_if_paused(release_gameplay_keys)
+            interrupt_guard.consume_if_requested(release_gameplay_keys)
             window_rect = get_window_rect()
             if window_rect is None:
                 log("Janela do jogo sumiu, aguardando ela voltar...")
@@ -340,7 +345,8 @@ def run(
 
             log("Setas sumiram -- fase 'Repita!' comecou, enviando sequencia...")
             focus_game_window()
-            press_sequence(best_sequence, hold_time, key_delay, pause_guard)
+            if not press_sequence(best_sequence, hold_time, key_delay, interrupt_guard):
+                continue
 
             # espera mais um pouco para nao reler a mesma tela de transicao
             # (ex: tela de resultado aparecendo) como se fosse novo memorize
@@ -429,4 +435,5 @@ if __name__ == "__main__":
                 target_level=selected_args.target_level,
             )
     except KeyboardInterrupt:
+        release_gameplay_keys()
         print("\nBot encerrado.")

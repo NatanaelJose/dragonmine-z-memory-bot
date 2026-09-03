@@ -205,6 +205,10 @@ python -m venv venv
 The bot waits until it finds the game window. Stop it at any time with
 `Ctrl+C` in the terminal.
 
+Pressing `Esc` while autoplay is sending input immediately cancels the current
+sequence and releases Space and all arrow keys. The bot stays active and the
+desktop status reports the interruption while the game menu is open.
+
 ### Autonomous runs and Memory targets
 
 Enable **Autonomous run** in the desktop app to let Perfect Recall recover from

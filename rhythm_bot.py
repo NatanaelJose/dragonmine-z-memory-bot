@@ -8,7 +8,7 @@ from pynput.keyboard import Controller, Key
 from arrow_detector import is_prompt_screen
 from autonomy import handle_prompt
 from capture import grab_window
-from input_pause import EscapePauseGuard
+from input_pause import EscapeInterruptGuard
 from rhythm_capture import lane_capture_rect
 from rhythm_detector import RhythmTracker, detect_hit_positions, detect_rhythm_notes
 from window import focus_game_window, get_window_rect
@@ -124,7 +124,7 @@ def run_rhythm(lead_ms=8.0, verbose=False, autonomous=False):
         )
 
     try:
-        with EscapePauseGuard(log) as pause_guard, mss.MSS() as sct:
+        with EscapeInterruptGuard(log) as interrupt_guard, mss.MSS() as sct:
             full_frame = grab_window(sct, window_rect)
             if is_prompt_screen(full_frame):
                 log("RHYTHM:START Tela inicial detectada; iniciando a musica.")
@@ -141,8 +141,9 @@ def run_rhythm(lead_ms=8.0, verbose=False, autonomous=False):
             tracker = calibrated_tracker(sct, lane_rect)
             log("RHYTHM:TRACKING Acompanhando notas nas duas pistas.")
             while True:
-                if pause_guard.wait_if_paused(inputs.release_all):
+                if interrupt_guard.consume_if_requested(inputs.release_all):
                     tracker = calibrated_tracker(sct, lane_rect)
+                    continue
                 now = time.perf_counter()
                 if now - last_rect_check >= 1.0:
                     current_rect = get_window_rect()
