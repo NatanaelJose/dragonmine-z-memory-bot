@@ -238,6 +238,7 @@ def run(
                 if restarted or had_active_run:
                     progress.reset_run()
                     log(f"LEVEL:RUN_RESET record={progress.best_completed}")
+                    time.sleep(0.8)
                 last_prompt_check = 0.0
                 continue
 
